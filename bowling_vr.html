@@ -67,7 +67,7 @@
     // ---------- Ray-based grab (sans super-hands) ----------
     // Grip pour saisir, relâche pour lancer (vitesse = mouvement de la main).
     AFRAME.registerComponent('ray-grab', {
-      schema:{objects:{default:'.grab-target'}, throwScale:{default:8}},
+      schema:{objects:{default:'.grab-target'}, throwScale:{default:3}},
       init(){
         this.grabbed=null;
         this.lastPos=new THREE.Vector3();
@@ -100,23 +100,58 @@
         this.grabbed=target;
       },
       _onUp(){
-        if(!this.grabbed) return;
-        const scene=this.el.sceneEl;
-        const ent=this.grabbed;
-        ent.removeAttribute('constraint');
-        if(ent.body){
-          const dt=Math.max((scene.timeDelta||16.7)/1000, 0.008);
-          this.tmp.subVectors(this.lastPos,this.prevPos).divideScalar(dt).multiplyScalar(this.data.throwScale);
-          ent.body.velocity.set(this.tmp.x,this.tmp.y,this.tmp.z);
-          // petit "whoosh"
-          try{
-            const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
-            playAt(scene,'sndThrow',wp);
-          }catch(e){}
-        }
-        ent.classList.remove('held');
-        this.grabbed=null;
-      }
+  if(!this.grabbed) return;
+  const scene=this.el.sceneEl;
+  const ent=this.grabbed;
+
+  // Libère la contrainte
+  ent.removeAttribute('constraint');
+
+  if(ent.body){
+    // 1) Vitesse "brute" depuis déplacement de la main
+    const dt = Math.max((scene.timeDelta||16.7)/1000, 0.008);
+    const delta = new THREE.Vector3().subVectors(this.lastPos, this.prevPos);
+    const rawSpeed = delta.length() / dt;                 // m/s
+    let speed = rawSpeed * this.data.throwScale;          // amplification contrôlée
+
+    // 2) Direction = "avant" de la main, mais projeté sur le sol (y=0)
+    const fwd = new THREE.Vector3(0,0,-1);
+    const q = new THREE.Quaternion();
+    this.el.object3D.getWorldQuaternion(q);
+    fwd.applyQuaternion(q);
+    fwd.y = 0;                       // pas de lift vertical
+    if (fwd.lengthSq() < 1e-6) fwd.set(0,0,-1);
+    fwd.normalize();
+
+    // 3) Clamps réalistes
+    const MIN_SPEED = 1.2;           // empêchons les tout-petits lancers de rester sur place
+    const MAX_SPEED = 6.5;           // ~23 km/h
+    speed = Math.min(Math.max(speed, MIN_SPEED), MAX_SPEED);
+
+    // 4) Vitesse finale: au ras du sol, légère "poussée" vers le bas
+    const v = fwd.multiplyScalar(speed);
+    const MAX_UP = 0.10;             // max vertical vers le haut
+    const MIN_DOWN = -0.60;          // légère pression vers le bas
+    v.y = Math.min(Math.max(v.y, MIN_DOWN), MAX_UP);
+
+    ent.body.velocity.set(v.x, v.y, v.z);
+
+    // 5) Roulement : ω ≈ v / r (r ~ 0.12 m)
+    const r = (ent.getAttribute('radius')||0.12);
+    // Spin pour que la boule roule vers l'avant : axe x = -vz/r, z = +vx/r
+    ent.body.angularVelocity.set(-v.z/Math.max(r,0.001), 0, v.x/Math.max(r,0.001));
+
+    // petit "whoosh"
+    try{
+      const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
+      playAt(scene,'sndThrow',wp);
+    }catch(e){}
+  }
+
+  ent.classList.remove('held');
+  this.grabbed=null;
+}
+
     });
 
     // ---------- Utilitaire son 3D ----------
