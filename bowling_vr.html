@@ -9,9 +9,7 @@
   <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.2/dist/aframe-extras.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@c-frame/aframe-physics-system@4.1.0/dist/aframe-physics-system.min.js"></script>
-  <script src="https://unpkg.com/super-hands@3.0.5/dist/super-hands.min.js"></script>
-
-  <style>
+<style>
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0e1116;color:#fff}
     .hud{position:fixed;left:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:5;line-height:1.35}
     .hud kbd{background:#222;padding:2px 6px;border-radius:6px}
@@ -56,7 +54,65 @@
       schema:{rig:{type:'selector'}, speedDeg:{default:140}, dead:{default:0.18}},
       init(){ this.x=0; this.el.addEventListener('thumbstickmoved', e=>{
         const x=e.detail.x||0; this.x=(Math.abs(x)>this.data.dead)?x:0;
-      });},
+      });
+    // ---------- Ray-based grab with physics constraint (no super-hands) ----------
+    AFRAME.registerComponent('ray-grab', {
+      schema:{objects:{default:'.grab-target'}, throwScale:{default:12}},
+      init(){
+        this.grabbed=null;
+        this.lastPos=new THREE.Vector3();
+        this.prevPos=new THREE.Vector3();
+        this.tmpVec=new THREE.Vector3();
+        this.el.addEventListener('gripdown', this._onDown.bind(this));
+        this.el.addEventListener('gripup', this._onUp.bind(this));
+      },
+      tick(t,dt){
+        this.prevPos.copy(this.lastPos);
+        this.el.object3D.getWorldPosition(this.lastPos);
+      },
+      _pick(){
+        const r = this.el.components.raycaster;
+        if(!r) return null;
+        const intersects = r.intersections || r.getIntersections && r.getIntersections();
+        if(!intersects || !intersects.length) return null;
+        for (let i=0;i<intersects.length;i++){
+          const el = intersects[i].object && intersects[i].object.el;
+          if (el && el.classList && el.classList.contains('grab-target')) return el;
+        }
+        return null;
+      },
+      _onDown(){
+        if (this.grabbed) return;
+        const target = this._pick();
+        if (!target) return;
+        if (!target.hasAttribute('dynamic-body')) target.setAttribute('dynamic-body','mass:5');
+        // add id to hand if missing (needed for constraint target)
+        if (!this.el.id) this.el.setAttribute('id', 'hand-' + Math.random().toString(36).slice(2,7));
+        target.setAttribute('constraint', `type:lock; target:#${this.el.id}`);
+        target.classList.add('held');
+      },
+      _onUp(){
+        if (!this.el || !this.el.sceneEl) return;
+        // find any entity currently constrained to this hand and release it
+        const scene = this.el.sceneEl;
+        const held = Array.from(scene.querySelectorAll('.held'));
+        held.forEach(ent => {
+          if (ent.hasAttribute('constraint')){
+            ent.removeAttribute('constraint');
+            if (ent.body){
+              const dt = (scene.timeDelta | 16.7) / 1000.0
+              const vx = (this.lastPos.x - this.prevPos.x) / dt * this.data.throwScale;
+              const vy = (this.lastPos.y - this.prevPos.y) / dt * this.data.throwScale;
+              const vz = (this.lastPos.z - this.prevPos.z) / dt * this.data.throwScale;
+              ent.body.velocity.set(vx, vy, vz);
+            }
+          }
+          ent.classList.remove('held');
+        });
+      }
+    });
+
+},
       tick(t,dt){ const r=this.data.rig; if(!r||!this.x) return;
         const rot=r.getAttribute('rotation'); rot.y -= this.x*this.data.speedDeg*(dt/1000);
         r.setAttribute('rotation',rot);
@@ -100,7 +156,21 @@
         this._ui();
         this._buildLane();
         this.resetFrame();
-        this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Grip pour saisir la boule.'));
+        
+        const scene = this.el.sceneEl;
+        const rig = document.getElementById('rig');
+        const baseZ = rig ? rig.getAttribute('position').z : 2.8;
+        if (scene && rig){
+          scene.addEventListener('enter-vr', ()=>{
+            const p = rig.getAttribute('position'); rig.setAttribute('position',{x:p.x,y:0,z:baseZ});
+            this._toast('⚠️ Saisir au Grip; viser la ligne rouge.');
+          });
+          scene.addEventListener('exit-vr', ()=>{
+            const p = rig.getAttribute('position'); rig.setAttribute('position',{x:p.x,y:1.6,z:baseZ});
+          });
+        }
+
+this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Grip pour saisir la boule.'));
       },
 
       // UI
@@ -243,27 +313,17 @@
         b.setAttribute('material','roughness:0.35; metalness:0.1');
         b.setAttribute('position','0 0.4 1.0');
         b.setAttribute('shadow','cast:true; receive:true');
-        b.setAttribute('grabbable','');
-        b.setAttribute('hover-highlight','');
-        b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
+b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
         this.el.sceneEl.appendChild(b);
         this._ball=b;
-
-        // Wobble/instabilité au lâcher selon difficulté
-        const wob = this._ballDamp.wobble;
-        const onGrabEnd = () => {
-          if (!b.body) return;
-          // couple aléatoire latéral
-          if (wob>0){
-            const torque = new CANNON.Vec3( (Math.random()-0.5)*wob, 0, (Math.random()-0.5)*wob );
-            b.body.torque = torque;
+        const wob = this._ballDamp && this._ballDamp.wobble || 0;
+        b.addEventListener('constraint-added', ()=>{
+          if (b.body && wob>0){
+            b.body.angularVelocity.set( (Math.random()-0.5)*wob, 0, (Math.random()-0.5)*wob );
           }
-          // son de lancer
-          const wp = b.object3D.getWorldPosition(new THREE.Vector3());
-          playAt(this.el.sceneEl,'sndThrow', wp);
-        };
-        b.addEventListener('grab-end', onGrabEnd);
-        if (announce) this._toast(`Boule "${spec.name}" disponible`);
+        });
+
+if (announce) this._toast(`Boule "${spec.name}" disponible`);
       },
 
       // Cycle de frame
@@ -292,7 +352,7 @@
         if (this._ball && this._ball.body){
           const v = this._ball.body.velocity.length();
           const z = this._ball.object3D.position.z;
-          const held = this._ball.classList.contains('held');
+          const held = this._ball && this._ball.hasAttribute("constraint");
           if (!this.inPlay){
             // passe en jeu si la balle franchit la ligne de faute avec vitesse
             if (!held && z < this.data.foulZ - 0.05 && v > 0.2){
@@ -403,8 +463,7 @@
         left-stick-move="rig:#rig; speed:2.0; dead:0.18"
         laser-controls="hand: left"
         raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
-        static-body="shape: sphere; sphereRadius: 0.04"
-        super-hands="colliderEvent: raycaster-intersection; colliderEndEvent: raycaster-intersection-cleared; grabStartButtons: gripdown; grabEndButtons: gripup">
+        static-body="shape: sphere; sphereRadius: 0.04" ray-grab>
       </a-entity>
 
       <!-- Main droite -->
@@ -413,8 +472,7 @@
         right-stick-smoothturn="rig:#rig; speedDeg:140; dead:0.18"
         laser-controls="hand: right"
         raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
-        static-body="shape: sphere; sphereRadius: 0.04"
-        super-hands="colliderEvent: raycaster-intersection; colliderEndEvent: raycaster-intersection-cleared; grabStartButtons: gripdown; grabEndButtons: gripup">
+        static-body="shape: sphere; sphereRadius: 0.04" ray-grab>
       </a-entity>
     </a-entity>
 
