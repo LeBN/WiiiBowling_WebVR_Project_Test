@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>VR Bowling – Prototype</title>
+
+  <!-- A-Frame / extras / physics / super-hands -->
+  <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.2/dist/aframe-extras.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@c-frame/aframe-physics-system@4.1.0/dist/aframe-physics-system.min.js"></script>
+  <script src="https://unpkg.com/super-hands@3.0.5/dist/super-hands.min.js"></script>
+
+  <style>
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0e1116;color:#fff}
+    .hud{position:fixed;left:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:5;line-height:1.35}
+    .hud kbd{background:#222;padding:2px 6px;border-radius:6px}
+    .panel{position:fixed;right:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:6;min-width:260px}
+    .panel h3{margin:0 0 6px 0;font-weight:700}
+    .panel .row{display:flex;gap:6px;flex-wrap:wrap}
+    .panel button{background:#2b6cb0;color:#fff;border:0;border-radius:10px;padding:6px 10px;cursor:pointer}
+    .panel button:disabled{opacity:.6;cursor:not-allowed}
+    .panel .chip{padding:6px 10px;border-radius:999px;background:#1f2937;cursor:pointer;border:1px solid #334155}
+    .panel .chip.active{background:#0ea5e9;border-color:#0284c7}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:#111c;padding:8px 12px;border-radius:10px;border:1px solid #2b3340;z-index:10;display:none}
+    .toast.show{display:block}
+  </style>
+
+  <script>
+    // ---------- Mouvement (stick gauche / droite) ----------
+    AFRAME.registerComponent('left-stick-move', {
+      schema:{rig:{type:'selector'}, speed:{default:2.1}, dead:{default:0.18}},
+      init(){
+        this.vx=0; this.vy=0;
+        this.onThumb = e=>{
+          const x=e.detail.x||0, y=e.detail.y||0;
+          this.vx = (Math.abs(x)>this.data.dead)? x : 0;
+          this.vy = (Math.abs(y)>this.data.dead)? y : 0;
+        };
+        this.el.addEventListener('thumbstickmoved', this.onThumb);
+      },
+      tick(t,dt){
+        const rigEl=this.data.rig; if(!rigEl) return;
+        if(!this.vx && !this.vy) return;
+        const rig=rigEl.object3D;
+        const yaw = THREE.MathUtils.degToRad(rigEl.getAttribute('rotation').y);
+        const cos=Math.cos(yaw), sin=Math.sin(yaw);
+        const forward=this.vy, strafe=this.vx;
+        const step=this.data.speed*(dt/1000);
+        rig.position.x += (strafe*cos + forward*sin)*step;
+        rig.position.z += (forward*cos - strafe*sin)*step;
+      },
+      remove(){ this.el.removeEventListener('thumbstickmoved', this.onThumb); }
+    });
+    AFRAME.registerComponent('right-stick-smoothturn', {
+      schema:{rig:{type:'selector'}, speedDeg:{default:140}, dead:{default:0.18}},
+      init(){ this.x=0; this.el.addEventListener('thumbstickmoved', e=>{
+        const x=e.detail.x||0; this.x=(Math.abs(x)>this.data.dead)?x:0;
+      });},
+      tick(t,dt){ const r=this.data.rig; if(!r||!this.x) return;
+        const rot=r.getAttribute('rotation'); rot.y -= this.x*this.data.speedDeg*(dt/1000);
+        r.setAttribute('rotation',rot);
+      }
+    });
+
+    // BOWLING
+    const DIFFS = {
+      easy:   { laneFric: 0.18, ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.7, wobble: 0.0 },
+      normal: { laneFric: 0.10, ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.8, wobble: 0.03 },
+      hard:   { laneFric: 0.06, ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.95, wobble: 0.08 }
+    };
+    const BALLS = [
+      {name:'Légère',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
+      {name:'Standard',radius:0.122, mass:5.0,  color:'#8bff9f'},
+      {name:'Lourde',  radius:0.128, mass:7.25, color:'#ff8bd1'}
+    ];
+
+    // Son en 3D
+    function playAt(scene, id, pos){
+      const s = document.createElement('a-entity');
+      s.setAttribute('position', pos.x+' '+pos.y+' '+pos.z);
+      s.setAttribute('sound', 'src:#'+id+'; autoplay:true; positional:true; volume:0.9; refDistance:1.8; rolloffFactor:1.0');
+      scene.appendChild(s);
+      setTimeout(()=> s.remove(), 1200);
+    }
+
+    AFRAME.registerComponent('bowling-game', {
+      schema:{
+        difficulty:{default:'normal'}, // easy/normal/hard
+        laneLength:{default:18},
+        laneWidth:{default:1.4},
+        foulZ:{default:0.0},
+        pinZ:{default:-12.0}
+      },
+      init(){
+        this.throws=0; this.scoreThisFrame=0; this.inPlay=false;
+        this.downSet = new Set();
+        this._pins=[];
+        this._ball=null;
+        this._ui();
+        this._buildLane();
+        this.resetFrame();
+        this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Grip pour saisir la boule.'));
+      },
+
+      // UI
+      _ui(){
+        const scoreEl = document.getElementById('score'); this._scoreEl = scoreEl;
+        const statusEl = document.getElementById('status'); this._statusEl = statusEl;
+        const diffEls = document.querySelectorAll('.chip[data-diff]');
+        diffEls.forEach(ch=> ch.addEventListener('click', ()=>{
+          diffEls.forEach(x=>x.classList.remove('active')); ch.classList.add('active');
+          this.data.difficulty = ch.dataset.diff;
+          this._applyDifficulty();
+        }));
+        // set initial chip
+        document.querySelector(`.chip[data-diff="${this.data.difficulty}"]`)?.classList.add('active');
+
+        // ball spawns
+        document.querySelectorAll('[data-ball]').forEach((btn,i)=>{
+          btn.addEventListener('click', ()=> this.spawnBall(i,true));
+        });
+        document.getElementById('resetAll').addEventListener('click', ()=> this.resetFrame(true));
+      },
+      _setStatus(t){ this._statusEl.textContent=t; },
+      _setScore(){ this._scoreEl.textContent = `Lancers: ${this.throws}/2 • Quilles tombées: ${this.downSet.size} • Score frame: ${this.scoreThisFrame}`; },
+      _toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 1800); },
+
+      //Piste
+      _buildLane(){
+        const scene = this.el.sceneEl;
+        // Sol
+        const ground = document.createElement('a-plane');
+        ground.setAttribute('rotation','-90 0 0');
+        ground.setAttribute('width', 30);
+        ground.setAttribute('height', 30);
+        ground.setAttribute('color', '#2a2f38');
+        ground.setAttribute('static-body','');
+        ground.setAttribute('shadow','receive:true');
+        scene.appendChild(ground);
+
+        // Piste principale (visuelle + collisions)
+        this._lane = document.createElement('a-box');
+        this._lane.setAttribute('position', `0 0.02 ${-this.data.laneLength/2}`);
+        this._lane.setAttribute('width', this.data.laneWidth);
+        this._lane.setAttribute('height', 0.04);
+        this._lane.setAttribute('depth', this.data.laneLength);
+        this._lane.setAttribute('color', '#886544');
+        this._lane.setAttribute('material', 'roughness:0.6; metalness:0.0');
+        this._lane.setAttribute('static-body','');
+        this._lane.setAttribute('shadow','receive:true');
+        scene.appendChild(this._lane);
+
+        // Gouttières = murs latéraux bas (distance selon difficulté)
+        this._leftWall  = document.createElement('a-box');
+        this._rightWall = document.createElement('a-box');
+        [this._leftWall,this._rightWall].forEach((w,idx)=>{
+          const side = idx?1:-1;
+          w.setAttribute('position', `${side*(this.data.laneWidth/2+0.4)} 0.2 ${-this.data.laneLength/2}`);
+          w.setAttribute('width', 0.2); w.setAttribute('height', 0.4); w.setAttribute('depth', this.data.laneLength);
+          w.setAttribute('color','#1f2937'); w.setAttribute('static-body','');
+          scene.appendChild(w);
+        });
+
+        // Panneau de départ (rampe de boules)
+        const rack = document.createElement('a-box');
+        rack.setAttribute('position', `0 0.25 1.2`);
+        rack.setAttribute('width', 1.6);
+        rack.setAttribute('height', 0.5);
+        rack.setAttribute('depth', 0.6);
+        rack.setAttribute('color', '#4b5563');
+        rack.setAttribute('static-body','');
+        rack.setAttribute('shadow','receive:true');
+        scene.appendChild(rack);
+
+        // marque ligne de faute
+        const foul = document.createElement('a-box');
+        foul.setAttribute('position', `0 0.041 ${this.data.foulZ}`);
+        foul.setAttribute('width', this.data.laneWidth);
+        foul.setAttribute('height', 0.005);
+        foul.setAttribute('depth', 0.02);
+        foul.setAttribute('color', '#ef4444');
+        foul.setAttribute('static-body','');
+        scene.appendChild(foul);
+
+        this._applyDifficulty();
+      },
+      _applyDifficulty(){
+        const d = DIFFS[this.data.difficulty] || DIFFS.normal;
+        // Ajuste la largeur apparente des gouttières en déplaçant les murs
+        const half = d.gutterHalf; // 0.7 (étroit) -> 0.95 (large)
+        this._leftWall.setAttribute('position',  `${-(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
+        this._rightWall.setAttribute('position', `${+(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
+        // stocke pour usage sur la balle
+        this._ballDamp = {lin: d.ballDampLin, ang: d.ballDampAng, wobble: d.wobble};
+        this._setStatus(`Difficulté: ${this.data.difficulty}`);
+      },
+
+      // Pins & Ball
+      spawnPins(){
+        // nettoie anciens
+        this._pins.forEach(p=>p.remove()); this._pins.length=0;
+
+        const base = new THREE.Vector3(0, 0.225, this.data.pinZ);
+        const dx = 0.18, dz = 0.32; // espacement
+        const rows = [
+          [{x:0,        z:0}],                 // 1
+          [{x:-dx/2,   z:dz}, {x:+dx/2, z:dz}], // 2
+          [{x:-dx,     z:dz*2}, {x:0, z:dz*2}, {x:+dx, z:dz*2}], //3
+          [{x:-dx*1.5, z:dz*3}, {x:-dx*0.5,z:dz*3}, {x:+dx*0.5,z:dz*3}, {x:+dx*1.5,z:dz*3}] //4
+        ];
+        rows.flat().forEach((o,i)=>{
+          const pin = document.createElement('a-cylinder');
+          pin.setAttribute('class','pin');
+          pin.setAttribute('radius', 0.06);
+          pin.setAttribute('height', 0.45);
+          pin.setAttribute('color', '#f5f5f4');
+          pin.setAttribute('position', `${base.x+o.x} ${base.y} ${base.z+o.z}`);
+          pin.setAttribute('material','roughness:0.5; metalness:0.05; color:#f5f5f4');
+          pin.setAttribute('dynamic-body','mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
+          pin.setAttribute('shadow','cast:true; receive:true');
+          // son d'impact: quand vit>seuil et collision
+          pin.addEventListener('collide', (e)=>{
+            const other = e.detail && e.detail.body && e.detail.body.el;
+            if (!other) return;
+            const v = other.body ? (other.body.velocity.length()||0) : 0;
+            if (v>0.8){
+              const wp = pin.object3D.getWorldPosition(new THREE.Vector3());
+              playAt(this.el.sceneEl,'sndPin',wp);
+            }
+          });
+          this.el.sceneEl.appendChild(pin);
+          this._pins.push(pin);
+        });
+      },
+      spawnBall(ballIndex=1, announce=false){
+        if (this._ball && this._ball.isConnected) this._ball.remove();
+        const spec = BALLS[Math.max(0,Math.min(BALLS.length-1,ballIndex))];
+        const b = document.createElement('a-sphere');
+        b.setAttribute('class','ball grab-target');
+        b.setAttribute('radius', spec.radius);
+        b.setAttribute('color', spec.color);
+        b.setAttribute('material','roughness:0.35; metalness:0.1');
+        b.setAttribute('position','0 0.4 1.0');
+        b.setAttribute('shadow','cast:true; receive:true');
+        b.setAttribute('grabbable','');
+        b.setAttribute('hover-highlight','');
+        b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
+        this.el.sceneEl.appendChild(b);
+        this._ball=b;
+
+        // Wobble/instabilité au lâcher selon difficulté
+        const wob = this._ballDamp.wobble;
+        const onGrabEnd = () => {
+          if (!b.body) return;
+          // couple aléatoire latéral
+          if (wob>0){
+            const torque = new CANNON.Vec3( (Math.random()-0.5)*wob, 0, (Math.random()-0.5)*wob );
+            b.body.torque = torque;
+          }
+          // son de lancer
+          const wp = b.object3D.getWorldPosition(new THREE.Vector3());
+          playAt(this.el.sceneEl,'sndThrow', wp);
+        };
+        b.addEventListener('grab-end', onGrabEnd);
+        if (announce) this._toast(`Boule "${spec.name}" disponible`);
+      },
+
+      // Cycle de frame
+      resetFrame(hard=false){
+        this.throws=0; this.scoreThisFrame=0; this.downSet.clear(); this.inPlay=false;
+        if (hard){ this._toast('Réinitialisation complète.'); }
+        this.spawnPins();
+        this.spawnBall(1);
+        this._setStatus(`Difficulté: ${this.data.difficulty} — Mode entraînement (1 frame)`);
+        this._setScore();
+      },
+
+      tick(t,dt){
+        // détection des quilles tombées (tilt > seuil)
+        const THRESH = 0.75;
+        this._pins.forEach(pin=>{
+          if (this.downSet.has(pin)) return;
+          const up = new THREE.Vector3(0,1,0).applyQuaternion(pin.object3D.quaternion);
+          const dot = up.dot(new THREE.Vector3(0,1,0));
+          if (dot < THRESH || pin.object3D.position.y < 0.05){
+            this.downSet.add(pin);
+          }
+        });
+
+        // gestion des lancers
+        if (this._ball && this._ball.body){
+          const v = this._ball.body.velocity.length();
+          const z = this._ball.object3D.position.z;
+          const held = this._ball.classList.contains('held');
+          if (!this.inPlay){
+            // passe en jeu si la balle franchit la ligne de faute avec vitesse
+            if (!held && z < this.data.foulZ - 0.05 && v > 0.2){
+              this.inPlay = true;
+              this.throws += 1;
+              this._setScore();
+            }
+          }else{
+            // fin de lancer si balle presque arrêtée ou sortie loin
+            if (v < 0.05 || z < -this.data.laneLength){
+              this._finishThrow();
+            }
+          }
+        }
+      },
+
+      _finishThrow(){
+        if (!this.inPlay) return;
+        this.inPlay=false;
+        // comptage des quilles tombées
+        const fallenNow = this.downSet.size;
+        this.scoreThisFrame = fallenNow;
+
+        // STRIKE au 1er lancer
+        if (this.throws===1 && fallenNow===10){
+          this._setStatus('🎯 STRIKE ! Réinitialisation...');
+          playAt(this.el.sceneEl,'sndStrike', new THREE.Vector3(0,1.6,-10));
+          setTimeout(()=> this.resetFrame(), 1300);
+          return;
+        }
+
+        if (this.throws===2){
+          // Spare
+          if (fallenNow===10){
+            this._setStatus('✨ SPARE ! Réinitialisation...');
+            playAt(this.el.sceneEl,'sndStrike', new THREE.Vector3(0,1.6,-10));
+          }else{
+            this._setStatus('Fin du frame. Réinitialisation...');
+            playAt(this.el.sceneEl,'sndEnd', new THREE.Vector3(0,1.6,-10));
+          }
+          setTimeout(()=> this.resetFrame(), 1300);
+        }else{
+          // entre les 2 lancers: conserve les quilles restantes, propose une nouvelle balle
+          this._setStatus('Deuxième lancer — visez les quilles restantes');
+          this.spawnBall(1);
+        }
+        this._setScore();
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <strong>Commandes VR</strong><br/>
+    • Stick gauche: se déplacer &nbsp;• Stick droit: rotation<br/>
+    • <b>Grip</b> saisir/lâcher • <b>Trigger</b> (aucun usage ici)<br/>
+    <u>Clavier</u> : ZQSD pour déplacer la caméra (desktop), souris pour regarder<br/>
+    <div id="status" style="margin-top:6px;opacity:.85"></div>
+    <div id="score" style="margin-top:2px"></div>
+  </div>
+
+  <div class="panel" role="group" aria-label="Paramètres Bowling">
+    <h3>VR Bowling — Réglages</h3>
+    <div style="margin-bottom:6px">Difficulté :</div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="chip" data-diff="easy">Facile</div>
+      <div class="chip" data-diff="normal">Normal</div>
+      <div class="chip" data-diff="hard">Difficile</div>
+    </div>
+    <div style="margin-bottom:6px">Boules :</div>
+    <div class="row" style="margin-bottom:10px">
+      <button data-ball="0">Légère</button>
+      <button data-ball="1">Standard</button>
+      <button data-ball="2">Lourde</button>
+      <button id="resetAll" style="margin-left:auto;background:#374151">Réinit. piste</button>
+    </div>
+    <small style="opacity:.8">Mode entraînement : 1 frame, jusqu’à 2 lancers. Strike ⇒ reset immédiat.</small>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <a-scene
+    background="color:#0f141a"
+    renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
+    shadow="type:pcfsoft"
+    physics="gravity:-9.8;debug:false"
+    bowling-game="difficulty: normal"
+  >
+    <a-assets>
+      <!-- bips en base64 -->
+      <audio id="sndThrow"  src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+      <audio id="sndPin"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+      <audio id="sndStrike" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+      <audio id="sndEnd"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+    </a-assets>
+
+    <!-- Lumières -->
+    <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
+    <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0"></a-entity>
+
+    <!-- RIG + Caméra -->
+    <a-entity id="rig" position="0 1.6 2.8">
+      <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
+
+      <!-- Main gauche -->
+      <a-entity id="leftCtl"
+        oculus-touch-controls="hand: left"
+        left-stick-move="rig:#rig; speed:2.0; dead:0.18"
+        laser-controls="hand: left"
+        raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
+        static-body="shape: sphere; sphereRadius: 0.04"
+        super-hands="colliderEvent: raycaster-intersection; colliderEndEvent: raycaster-intersection-cleared; grabStartButtons: gripdown; grabEndButtons: gripup">
+      </a-entity>
+
+      <!-- Main droite -->
+      <a-entity id="rightCtl"
+        oculus-touch-controls="hand: right"
+        right-stick-smoothturn="rig:#rig; speedDeg:140; dead:0.18"
+        laser-controls="hand: right"
+        raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
+        static-body="shape: sphere; sphereRadius: 0.04"
+        super-hands="colliderEvent: raycaster-intersection; colliderEndEvent: raycaster-intersection-cleared; grabStartButtons: gripdown; grabEndButtons: gripup">
+      </a-entity>
+    </a-entity>
+
+    <!-- Ciel -->
+    <a-sky color="#0b0f14"></a-sky>
+  </a-scene>
+</body>
+</html>
