@@ -65,94 +65,85 @@
     });
 
     // ---------- Ray-based grab (sans super-hands) ----------
-    // Grip pour saisir, relâche pour lancer (vitesse = mouvement de la main).
-    AFRAME.registerComponent('ray-grab', {
-      schema:{objects:{default:'.grab-target'}, throwScale:{default:3}},
-      init(){
-        this.grabbed=null;
-        this.lastPos=new THREE.Vector3();
-        this.prevPos=new THREE.Vector3();
-        this.tmp=new THREE.Vector3();
-        this.el.addEventListener('gripdown', ()=>this._onDown());
-        this.el.addEventListener('gripup',   ()=>this._onUp());
-      },
-      tick(){
-        this.prevPos.copy(this.lastPos);
-        this.el.object3D.getWorldPosition(this.lastPos);
-      },
-      _pick(){
-        const r=this.el.components.raycaster;
-        const list = r && (r.intersections || (r.getIntersections&&r.getIntersections()));
-        if(!list||!list.length) return null;
-        for(const hit of list){
-          const el = hit.object && hit.object.el;
-          if(el && el.classList && el.classList.contains('grab-target')) return el;
-        }
-        return null;
-      },
-      _onDown(){
-        if(this.grabbed) return;
-        const target=this._pick(); if(!target) return;
-        if(!this.el.id) this.el.setAttribute('id','hand-'+Math.random().toString(36).slice(2,7));
-        if(!target.hasAttribute('dynamic-body')) target.setAttribute('dynamic-body','mass:5');
-        target.setAttribute('constraint',`type:lock; target:#${this.el.id}`);
-        target.classList.add('held');
-        this.grabbed=target;
-      },
-      _onUp(){
-  if(!this.grabbed) return;
-  const scene=this.el.sceneEl;
-  const ent=this.grabbed;
+// ---------- Ray-based grab (pur mouvement bras, sans clamp ni assist) ----------
+AFRAME.registerComponent('ray-grab', {
+  schema:{
+    objects:{default:'.grab-target'},
+    throwScale:{default:3} // ajuste si tu veux plus/moins de puissance globale
+  },
+  init(){
+    this.grabbed=null;
+    this.lastPos=new THREE.Vector3();
+    this.prevPos=new THREE.Vector3();
+    this.tmp=new THREE.Vector3();
 
-  // Libère la contrainte
-  ent.removeAttribute('constraint');
+    // Saisir / relâcher (événements standard + émulateur)
+    const down = this._onDown.bind(this), up = this._onUp.bind(this);
+    this.el.addEventListener('gripdown', down);
+    this.el.addEventListener('gripup',   up);
+    this.el.addEventListener('squeezestart', down);
+    this.el.addEventListener('squeezeend',   up);
+    this.el.addEventListener('triggerdown',  down);
+    this.el.addEventListener('triggerup',    up);
+  },
+  tick(){
+    this.prevPos.copy(this.lastPos);
+    this.el.object3D.getWorldPosition(this.lastPos);
+  },
+  _pick(){
+    const r=this.el.components.raycaster;
+    const list = r && (r.intersections || (r.getIntersections&&r.getIntersections()));
+    if(!list||!list.length) return null;
+    for(const hit of list){
+      const el = hit.object && hit.object.el;
+      if(el && el.classList && el.classList.contains('grab-target')) return el;
+    }
+    return null;
+  },
+  _onDown(){
+    if(this.grabbed) return;
+    const target=this._pick(); if(!target) return;
+    if(!this.el.id) this.el.setAttribute('id','hand-'+Math.random().toString(36).slice(2,7));
+    if(!target.hasAttribute('dynamic-body')) target.setAttribute('dynamic-body','mass:5');
+    target.setAttribute('constraint',`type:lock; target:#${this.el.id}`);
+    target.classList.add('held');
+    this.grabbed=target;
+  },
+  _onUp(){
+    if(!this.grabbed) return;
+    const scene=this.el.sceneEl;
+    const ent=this.grabbed;
 
-  if(ent.body){
-    // 1) Vitesse "brute" depuis déplacement de la main
-    const dt = Math.max((scene.timeDelta||16.7)/1000, 0.008);
-    const delta = new THREE.Vector3().subVectors(this.lastPos, this.prevPos);
-    const rawSpeed = delta.length() / dt;                 // m/s
-    let speed = rawSpeed * this.data.throwScale;          // amplification contrôlée
+    // libère la contrainte
+    ent.removeAttribute('constraint');
 
-    // 2) Direction = "avant" de la main, mais projeté sur le sol (y=0)
-    const fwd = new THREE.Vector3(0,0,-1);
-    const q = new THREE.Quaternion();
-    this.el.object3D.getWorldQuaternion(q);
-    fwd.applyQuaternion(q);
-    fwd.y = 0;                       // pas de lift vertical
-    if (fwd.lengthSq() < 1e-6) fwd.set(0,0,-1);
-    fwd.normalize();
+    if(ent.body){
+      // Vitesse = déplacement de la main / dt, multiplié par throwScale (aucun clamp/assist)
+      const dt = Math.max((scene.timeDelta||16.7)/1000, 0.001); // sécu anti 0
+      const v = this.tmp.subVectors(this.lastPos, this.prevPos).divideScalar(dt).multiplyScalar(this.data.throwScale);
 
-    // 3) Clamps réalistes
-    const MIN_SPEED = 1.2;           // empêchons les tout-petits lancers de rester sur place
-    const MAX_SPEED = 6.5;           // ~23 km/h
-    speed = Math.min(Math.max(speed, MIN_SPEED), MAX_SPEED);
+      // Applique la vélocité telle quelle
+      ent.body.velocity.set(v.x, v.y, v.z);
 
-    // 4) Vitesse finale: au ras du sol, légère "poussée" vers le bas
-    const v = fwd.multiplyScalar(speed);
-    const MAX_UP = 0.10;             // max vertical vers le haut
-    const MIN_DOWN = -0.60;          // légère pression vers le bas
-    v.y = Math.min(Math.max(v.y, MIN_DOWN), MAX_UP);
+      // Spin de roulement cohérent (facultatif mais naturel) : ω = (up × v_horiz) / r
+      const up = new THREE.Vector3(0,1,0);
+      const vh = new THREE.Vector3(v.x, 0, v.z); // on ne “roule” que sur l’horizontale
+      const r  = ent.getAttribute('radius') || 0.12;
+      const omega = new THREE.Vector3().copy(up).cross(vh).multiplyScalar(1/Math.max(r,0.001));
+      ent.body.angularVelocity.set(omega.x, omega.y, omega.z);
 
-    ent.body.velocity.set(v.x, v.y, v.z);
+      // petit "whoosh" (optionnel)
+      try{
+        const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
+        playAt(scene,'sndThrow',wp);
+      }catch(e){}
+    }
 
-    // 5) Roulement : ω ≈ v / r (r ~ 0.12 m)
-    const r = (ent.getAttribute('radius')||0.12);
-    // Spin pour que la boule roule vers l'avant : axe x = -vz/r, z = +vx/r
-    ent.body.angularVelocity.set(-v.z/Math.max(r,0.001), 0, v.x/Math.max(r,0.001));
-
-    // petit "whoosh"
-    try{
-      const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
-      playAt(scene,'sndThrow',wp);
-    }catch(e){}
+    ent.classList.remove('held');
+    this.grabbed=null;
   }
+});
 
-  ent.classList.remove('held');
-  this.grabbed=null;
-}
-
-    });
 
     // ---------- Utilitaire son 3D ----------
     function playAt(scene, id, pos){
