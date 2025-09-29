@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>VR Bowling – Prototype</title>
+  <title>VR Bowling — Prototype (One-File)</title>
 
-  <!-- A-Frame / extras / physics / super-hands -->
+  <!-- A-Frame + extras + physics (pas de super-hands) -->
   <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.2/dist/aframe-extras.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@c-frame/aframe-physics-system@4.1.0/dist/aframe-physics-system.min.js"></script>
-<style>
+
+  <style>
+    :root { color-scheme: dark; }
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0e1116;color:#fff}
-    .hud{position:fixed;left:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:5;line-height:1.35}
-    .hud kbd{background:#222;padding:2px 6px;border-radius:6px}
+    .hud{position:fixed;left:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:5;line-height:1.35;max-width:420px}
     .panel{position:fixed;right:12px;top:12px;background:#0009;padding:10px 12px;border-radius:12px;z-index:6;min-width:260px}
     .panel h3{margin:0 0 6px 0;font-weight:700}
     .panel .row{display:flex;gap:6px;flex-wrap:wrap}
@@ -25,7 +26,7 @@
   </style>
 
   <script>
-    // ---------- Mouvement (stick gauche / droite) ----------
+    // ---------- Déplacements stick gauche (locomotion) ----------
     AFRAME.registerComponent('left-stick-move', {
       schema:{rig:{type:'selector'}, speed:{default:2.1}, dead:{default:0.18}},
       init(){
@@ -50,88 +51,75 @@
       },
       remove(){ this.el.removeEventListener('thumbstickmoved', this.onThumb); }
     });
+
+    // ---------- Rotation douce stick droit ----------
     AFRAME.registerComponent('right-stick-smoothturn', {
       schema:{rig:{type:'selector'}, speedDeg:{default:140}, dead:{default:0.18}},
       init(){ this.x=0; this.el.addEventListener('thumbstickmoved', e=>{
         const x=e.detail.x||0; this.x=(Math.abs(x)>this.data.dead)?x:0;
-      });
-    // ---------- Ray-based grab with physics constraint (no super-hands) ----------
-    AFRAME.registerComponent('ray-grab', {
-      schema:{objects:{default:'.grab-target'}, throwScale:{default:12}},
-      init(){
-        this.grabbed=null;
-        this.lastPos=new THREE.Vector3();
-        this.prevPos=new THREE.Vector3();
-        this.tmpVec=new THREE.Vector3();
-        this.el.addEventListener('gripdown', this._onDown.bind(this));
-        this.el.addEventListener('gripup', this._onUp.bind(this));
-      },
-      tick(t,dt){
-        this.prevPos.copy(this.lastPos);
-        this.el.object3D.getWorldPosition(this.lastPos);
-      },
-      _pick(){
-        const r = this.el.components.raycaster;
-        if(!r) return null;
-        const intersects = r.intersections || r.getIntersections && r.getIntersections();
-        if(!intersects || !intersects.length) return null;
-        for (let i=0;i<intersects.length;i++){
-          const el = intersects[i].object && intersects[i].object.el;
-          if (el && el.classList && el.classList.contains('grab-target')) return el;
-        }
-        return null;
-      },
-      _onDown(){
-        if (this.grabbed) return;
-        const target = this._pick();
-        if (!target) return;
-        if (!target.hasAttribute('dynamic-body')) target.setAttribute('dynamic-body','mass:5');
-        // add id to hand if missing (needed for constraint target)
-        if (!this.el.id) this.el.setAttribute('id', 'hand-' + Math.random().toString(36).slice(2,7));
-        target.setAttribute('constraint', `type:lock; target:#${this.el.id}`);
-        target.classList.add('held');
-      },
-      _onUp(){
-        if (!this.el || !this.el.sceneEl) return;
-        // find any entity currently constrained to this hand and release it
-        const scene = this.el.sceneEl;
-        const held = Array.from(scene.querySelectorAll('.held'));
-        held.forEach(ent => {
-          if (ent.hasAttribute('constraint')){
-            ent.removeAttribute('constraint');
-            if (ent.body){
-              const dt = (scene.timeDelta | 16.7) / 1000.0
-              const vx = (this.lastPos.x - this.prevPos.x) / dt * this.data.throwScale;
-              const vy = (this.lastPos.y - this.prevPos.y) / dt * this.data.throwScale;
-              const vz = (this.lastPos.z - this.prevPos.z) / dt * this.data.throwScale;
-              ent.body.velocity.set(vx, vy, vz);
-            }
-          }
-          ent.classList.remove('held');
-        });
-      }
-    });
-
-},
+      });},
       tick(t,dt){ const r=this.data.rig; if(!r||!this.x) return;
         const rot=r.getAttribute('rotation'); rot.y -= this.x*this.data.speedDeg*(dt/1000);
         r.setAttribute('rotation',rot);
       }
     });
 
-    // BOWLING
-    const DIFFS = {
-      easy:   { laneFric: 0.18, ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.7, wobble: 0.0 },
-      normal: { laneFric: 0.10, ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.8, wobble: 0.03 },
-      hard:   { laneFric: 0.06, ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.95, wobble: 0.08 }
-    };
-    const BALLS = [
-      {name:'Légère',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
-      {name:'Standard',radius:0.122, mass:5.0,  color:'#8bff9f'},
-      {name:'Lourde',  radius:0.128, mass:7.25, color:'#ff8bd1'}
-    ];
+    // ---------- Ray-based grab (sans super-hands) ----------
+    // Grip pour saisir, relâche pour lancer (vitesse = mouvement de la main).
+    AFRAME.registerComponent('ray-grab', {
+      schema:{objects:{default:'.grab-target'}, throwScale:{default:8}},
+      init(){
+        this.grabbed=null;
+        this.lastPos=new THREE.Vector3();
+        this.prevPos=new THREE.Vector3();
+        this.tmp=new THREE.Vector3();
+        this.el.addEventListener('gripdown', ()=>this._onDown());
+        this.el.addEventListener('gripup',   ()=>this._onUp());
+      },
+      tick(){
+        this.prevPos.copy(this.lastPos);
+        this.el.object3D.getWorldPosition(this.lastPos);
+      },
+      _pick(){
+        const r=this.el.components.raycaster;
+        const list = r && (r.intersections || (r.getIntersections&&r.getIntersections()));
+        if(!list||!list.length) return null;
+        for(const hit of list){
+          const el = hit.object && hit.object.el;
+          if(el && el.classList && el.classList.contains('grab-target')) return el;
+        }
+        return null;
+      },
+      _onDown(){
+        if(this.grabbed) return;
+        const target=this._pick(); if(!target) return;
+        if(!this.el.id) this.el.setAttribute('id','hand-'+Math.random().toString(36).slice(2,7));
+        if(!target.hasAttribute('dynamic-body')) target.setAttribute('dynamic-body','mass:5');
+        target.setAttribute('constraint',`type:lock; target:#${this.el.id}`);
+        target.classList.add('held');
+        this.grabbed=target;
+      },
+      _onUp(){
+        if(!this.grabbed) return;
+        const scene=this.el.sceneEl;
+        const ent=this.grabbed;
+        ent.removeAttribute('constraint');
+        if(ent.body){
+          const dt=Math.max((scene.timeDelta||16.7)/1000, 0.008);
+          this.tmp.subVectors(this.lastPos,this.prevPos).divideScalar(dt).multiplyScalar(this.data.throwScale);
+          ent.body.velocity.set(this.tmp.x,this.tmp.y,this.tmp.z);
+          // petit "whoosh"
+          try{
+            const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
+            playAt(scene,'sndThrow',wp);
+          }catch(e){}
+        }
+        ent.classList.remove('held');
+        this.grabbed=null;
+      }
+    });
 
-    // Son en 3D
+    // ---------- Utilitaire son 3D ----------
     function playAt(scene, id, pos){
       const s = document.createElement('a-entity');
       s.setAttribute('position', pos.x+' '+pos.y+' '+pos.z);
@@ -140,9 +128,21 @@
       setTimeout(()=> s.remove(), 1200);
     }
 
+    // ---------- Cœur du jeu ----------
+    const DIFFS = {
+      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.70, wobble: 0.00 },
+      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.80, wobble: 0.03 },
+      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.95, wobble: 0.08 }
+    };
+    const BALLS = [
+      {name:'Légère',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
+      {name:'Standard',radius:0.122, mass:5.0,  color:'#8bff9f'},
+      {name:'Lourde',  radius:0.128, mass:7.25, color:'#ff8bd1'}
+    ];
+
     AFRAME.registerComponent('bowling-game', {
       schema:{
-        difficulty:{default:'normal'}, // easy/normal/hard
+        difficulty:{default:'normal'},
         laneLength:{default:18},
         laneWidth:{default:1.4},
         foulZ:{default:0.0},
@@ -151,42 +151,45 @@
       init(){
         this.throws=0; this.scoreThisFrame=0; this.inPlay=false;
         this.downSet = new Set();
-        this._pins=[];
-        this._ball=null;
+        this._pins=[]; this._ball=null;
+
         this._ui();
         this._buildLane();
         this.resetFrame();
-        
+
+        // Hauteur VR : y=0 en VR, y=1.6 sur desktop
         const scene = this.el.sceneEl;
         const rig = document.getElementById('rig');
         const baseZ = rig ? rig.getAttribute('position').z : 2.8;
         if (scene && rig){
           scene.addEventListener('enter-vr', ()=>{
-            const p = rig.getAttribute('position'); rig.setAttribute('position',{x:p.x,y:0,z:baseZ});
-            this._toast('⚠️ Saisir au Grip; viser la ligne rouge.');
+            const p=rig.getAttribute('position');
+            rig.setAttribute('position',{x:p.x,y:0,z:baseZ});
+            this._toast('⚠️ Grip pour saisir, relâche pour lancer. Vise la ligne rouge.');
           });
           scene.addEventListener('exit-vr', ()=>{
-            const p = rig.getAttribute('position'); rig.setAttribute('position',{x:p.x,y:1.6,z:baseZ});
+            const p=rig.getAttribute('position');
+            rig.setAttribute('position',{x:p.x,y:1.6,z:baseZ});
           });
         }
-
-this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Grip pour saisir la boule.'));
       },
 
-      // UI
+      // -------- UI & helpers --------
       _ui(){
-        const scoreEl = document.getElementById('score'); this._scoreEl = scoreEl;
-        const statusEl = document.getElementById('status'); this._statusEl = statusEl;
-        const diffEls = document.querySelectorAll('.chip[data-diff]');
-        diffEls.forEach(ch=> ch.addEventListener('click', ()=>{
-          diffEls.forEach(x=>x.classList.remove('active')); ch.classList.add('active');
-          this.data.difficulty = ch.dataset.diff;
-          this._applyDifficulty();
-        }));
-        // set initial chip
+        this._scoreEl = document.getElementById('score');
+        this._statusEl = document.getElementById('status');
+
+        const chips = document.querySelectorAll('.chip[data-diff]');
+        chips.forEach(ch=>{
+          ch.addEventListener('click', ()=>{
+            chips.forEach(x=>x.classList.remove('active'));
+            ch.classList.add('active');
+            this.data.difficulty = ch.dataset.diff;
+            this._applyDifficulty();
+          });
+        });
         document.querySelector(`.chip[data-diff="${this.data.difficulty}"]`)?.classList.add('active');
 
-        // ball spawns
         document.querySelectorAll('[data-ball]').forEach((btn,i)=>{
           btn.addEventListener('click', ()=> this.spawnBall(i,true));
         });
@@ -194,11 +197,12 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
       },
       _setStatus(t){ this._statusEl.textContent=t; },
       _setScore(){ this._scoreEl.textContent = `Lancers: ${this.throws}/2 • Quilles tombées: ${this.downSet.size} • Score frame: ${this.scoreThisFrame}`; },
-      _toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 1800); },
+      _toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 1500); },
 
-      //Piste
+      // -------- Construction de la piste --------
       _buildLane(){
         const scene = this.el.sceneEl;
+
         // Sol
         const ground = document.createElement('a-plane');
         ground.setAttribute('rotation','-90 0 0');
@@ -209,7 +213,7 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
         ground.setAttribute('shadow','receive:true');
         scene.appendChild(ground);
 
-        // Piste principale (visuelle + collisions)
+        // Piste
         this._lane = document.createElement('a-box');
         this._lane.setAttribute('position', `0 0.02 ${-this.data.laneLength/2}`);
         this._lane.setAttribute('width', this.data.laneWidth);
@@ -221,7 +225,7 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
         this._lane.setAttribute('shadow','receive:true');
         scene.appendChild(this._lane);
 
-        // Gouttières = murs latéraux bas (distance selon difficulté)
+        // Murs/gouttières
         this._leftWall  = document.createElement('a-box');
         this._rightWall = document.createElement('a-box');
         [this._leftWall,this._rightWall].forEach((w,idx)=>{
@@ -232,7 +236,7 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
           scene.appendChild(w);
         });
 
-        // Panneau de départ (rampe de boules)
+        // Rack (pose-boules)
         const rack = document.createElement('a-box');
         rack.setAttribute('position', `0 0.25 1.2`);
         rack.setAttribute('width', 1.6);
@@ -243,7 +247,7 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
         rack.setAttribute('shadow','receive:true');
         scene.appendChild(rack);
 
-        // marque ligne de faute
+        // Ligne de faute
         const foul = document.createElement('a-box');
         foul.setAttribute('position', `0 0.041 ${this.data.foulZ}`);
         foul.setAttribute('width', this.data.laneWidth);
@@ -257,31 +261,27 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
       },
       _applyDifficulty(){
         const d = DIFFS[this.data.difficulty] || DIFFS.normal;
-        // Ajuste la largeur apparente des gouttières en déplaçant les murs
-        const half = d.gutterHalf; // 0.7 (étroit) -> 0.95 (large)
+        const half = d.gutterHalf;
         this._leftWall.setAttribute('position',  `${-(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
         this._rightWall.setAttribute('position', `${+(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
-        // stocke pour usage sur la balle
         this._ballDamp = {lin: d.ballDampLin, ang: d.ballDampAng, wobble: d.wobble};
         this._setStatus(`Difficulté: ${this.data.difficulty}`);
       },
 
-      // Pins & Ball
+      // -------- Pins & Boule --------
       spawnPins(){
-        // nettoie anciens
         this._pins.forEach(p=>p.remove()); this._pins.length=0;
-
         const base = new THREE.Vector3(0, 0.225, this.data.pinZ);
-        const dx = 0.18, dz = 0.32; // espacement
+        const dx = 0.18, dz = 0.32; // espacements
         const rows = [
-          [{x:0,        z:0}],                 // 1
-          [{x:-dx/2,   z:dz}, {x:+dx/2, z:dz}], // 2
-          [{x:-dx,     z:dz*2}, {x:0, z:dz*2}, {x:+dx, z:dz*2}], //3
-          [{x:-dx*1.5, z:dz*3}, {x:-dx*0.5,z:dz*3}, {x:+dx*0.5,z:dz*3}, {x:+dx*1.5,z:dz*3}] //4
+          [{x:0,        z:0}],
+          [{x:-dx/2,   z:dz},       {x:+dx/2, z:dz}],
+          [{x:-dx,     z:dz*2},     {x:0, z:dz*2},     {x:+dx, z:dz*2}],
+          [{x:-dx*1.5, z:dz*3},     {x:-dx*0.5,z:dz*3},{x:+dx*0.5,z:dz*3},{x:+dx*1.5,z:dz*3}]
         ];
-        rows.flat().forEach((o,i)=>{
+        rows.flat().forEach((o)=>{
           const pin = document.createElement('a-cylinder');
-          pin.setAttribute('class','pin');
+          pin.setAttribute('class','pin grab-target');
           pin.setAttribute('radius', 0.06);
           pin.setAttribute('height', 0.45);
           pin.setAttribute('color', '#f5f5f4');
@@ -289,7 +289,6 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
           pin.setAttribute('material','roughness:0.5; metalness:0.05; color:#f5f5f4');
           pin.setAttribute('dynamic-body','mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
           pin.setAttribute('shadow','cast:true; receive:true');
-          // son d'impact: quand vit>seuil et collision
           pin.addEventListener('collide', (e)=>{
             const other = e.detail && e.detail.body && e.detail.body.el;
             if (!other) return;
@@ -311,22 +310,24 @@ this.el.sceneEl.addEventListener('enter-vr', ()=>this._toast('⚠️ Utilisez Gr
         b.setAttribute('radius', spec.radius);
         b.setAttribute('color', spec.color);
         b.setAttribute('material','roughness:0.35; metalness:0.1');
-        b.setAttribute('position','0 0.4 1.0');
+        b.setAttribute('position','0 0.4 1.0'); // sur le rack
         b.setAttribute('shadow','cast:true; receive:true');
-b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
+        b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
         this.el.sceneEl.appendChild(b);
         this._ball=b;
-        const wob = this._ballDamp && this._ballDamp.wobble || 0;
-        b.addEventListener('constraint-added', ()=>{
-          if (b.body && wob>0){
+
+        // léger wobble quand on attrape (via petite vitesse angulaire)
+        const wob = (this._ballDamp && this._ballDamp.wobble) || 0;
+        b.addEventListener('componentinitialized', (ev)=>{
+          if (ev.detail && ev.detail.name==='constraint' && wob>0 && b.body){
             b.body.angularVelocity.set( (Math.random()-0.5)*wob, 0, (Math.random()-0.5)*wob );
           }
         });
 
-if (announce) this._toast(`Boule "${spec.name}" disponible`);
+        if (announce) this._toast(`Boule "${spec.name}" disponible`);
       },
 
-      // Cycle de frame
+      // -------- Cycle d’un frame (2 lancers) --------
       resetFrame(hard=false){
         this.throws=0; this.scoreThisFrame=0; this.downSet.clear(); this.inPlay=false;
         if (hard){ this._toast('Réinitialisation complète.'); }
@@ -337,7 +338,7 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
       },
 
       tick(t,dt){
-        // détection des quilles tombées (tilt > seuil)
+        // détecte quille tombée via inclinaison (dot<0.75) ou si elle tombe du monde
         const THRESH = 0.75;
         this._pins.forEach(pin=>{
           if (this.downSet.has(pin)) return;
@@ -348,20 +349,19 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
           }
         });
 
-        // gestion des lancers
         if (this._ball && this._ball.body){
           const v = this._ball.body.velocity.length();
           const z = this._ball.object3D.position.z;
-          const held = this._ball && this._ball.hasAttribute("constraint");
+          const held = this._ball.hasAttribute('constraint'); // tenue en main
           if (!this.inPlay){
-            // passe en jeu si la balle franchit la ligne de faute avec vitesse
+            // passe en jeu si franchit la ligne de faute avec vitesse
             if (!held && z < this.data.foulZ - 0.05 && v > 0.2){
               this.inPlay = true;
               this.throws += 1;
               this._setScore();
             }
           }else{
-            // fin de lancer si balle presque arrêtée ou sortie loin
+            // fin du lancer si arrêt ou sortie
             if (v < 0.05 || z < -this.data.laneLength){
               this._finishThrow();
             }
@@ -372,20 +372,17 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
       _finishThrow(){
         if (!this.inPlay) return;
         this.inPlay=false;
-        // comptage des quilles tombées
         const fallenNow = this.downSet.size;
         this.scoreThisFrame = fallenNow;
 
-        // STRIKE au 1er lancer
         if (this.throws===1 && fallenNow===10){
           this._setStatus('🎯 STRIKE ! Réinitialisation...');
           playAt(this.el.sceneEl,'sndStrike', new THREE.Vector3(0,1.6,-10));
-          setTimeout(()=> this.resetFrame(), 1300);
+          setTimeout(()=> this.resetFrame(), 1200);
           return;
         }
 
         if (this.throws===2){
-          // Spare
           if (fallenNow===10){
             this._setStatus('✨ SPARE ! Réinitialisation...');
             playAt(this.el.sceneEl,'sndStrike', new THREE.Vector3(0,1.6,-10));
@@ -393,9 +390,8 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
             this._setStatus('Fin du frame. Réinitialisation...');
             playAt(this.el.sceneEl,'sndEnd', new THREE.Vector3(0,1.6,-10));
           }
-          setTimeout(()=> this.resetFrame(), 1300);
+          setTimeout(()=> this.resetFrame(), 1200);
         }else{
-          // entre les 2 lancers: conserve les quilles restantes, propose une nouvelle balle
           this._setStatus('Deuxième lancer — visez les quilles restantes');
           this.spawnBall(1);
         }
@@ -408,7 +404,7 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
   <div class="hud">
     <strong>Commandes VR</strong><br/>
     • Stick gauche: se déplacer &nbsp;• Stick droit: rotation<br/>
-    • <b>Grip</b> saisir/lâcher • <b>Trigger</b> (aucun usage ici)<br/>
+    • <b>Grip</b> saisir/lâcher • <b>Trigger</b> (non utilisé ici)<br/>
     <u>Clavier</u> : ZQSD pour déplacer la caméra (desktop), souris pour regarder<br/>
     <div id="status" style="margin-top:6px;opacity:.85"></div>
     <div id="score" style="margin-top:2px"></div>
@@ -442,7 +438,7 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
     bowling-game="difficulty: normal"
   >
     <a-assets>
-      <!-- bips en base64 -->
+      <!-- petits sons placeholders (remplace par tes .ogg/.wav si tu veux) -->
       <audio id="sndThrow"  src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndPin"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndStrike" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
@@ -453,7 +449,7 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
     <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
     <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0"></a-entity>
 
-    <!-- RIG + Caméra -->
+    <!-- RIG + Caméra : y=1.6 (desktop), y=0 auto en VR -->
     <a-entity id="rig" position="0 1.6 2.8">
       <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
 
@@ -463,7 +459,8 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
         left-stick-move="rig:#rig; speed:2.0; dead:0.18"
         laser-controls="hand: left"
         raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
-        static-body="shape: sphere; sphereRadius: 0.04" ray-grab>
+        static-body="shape: sphere; sphereRadius: 0.04"
+        ray-grab>
       </a-entity>
 
       <!-- Main droite -->
@@ -472,11 +469,12 @@ if (announce) this._toast(`Boule "${spec.name}" disponible`);
         right-stick-smoothturn="rig:#rig; speedDeg:140; dead:0.18"
         laser-controls="hand: right"
         raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
-        static-body="shape: sphere; sphereRadius: 0.04" ray-grab>
+        static-body="shape: sphere; sphereRadius: 0.04"
+        ray-grab>
       </a-entity>
     </a-entity>
 
-    <!-- Ciel -->
+    <!-- Fond -->
     <a-sky color="#0b0f14"></a-sky>
   </a-scene>
 </body>
