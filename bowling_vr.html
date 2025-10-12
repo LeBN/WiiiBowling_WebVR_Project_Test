@@ -37,7 +37,10 @@
           this.vy = (Math.abs(y)>this.data.dead)? y : 0;
         };
         this.el.addEventListener('thumbstickmoved', this.onThumb);
+        
       },
+
+      
       tick(t,dt){
         const rigEl=this.data.rig; if(!rigEl) return;
         if(!this.vx && !this.vy) return;
@@ -172,7 +175,8 @@ AFRAME.registerComponent('ray-grab', {
         laneLength:{default:18},
         laneWidth:{default:1.4},
         foulZ:{default:0.0},
-        pinZ:{default:-12.0}
+        pinZ:{default:-12.0},
+        playersCount:{default:4}
       },
       init(){
         this.throws=0; this.scoreThisFrame=0; this.inPlay=false;
@@ -182,6 +186,8 @@ AFRAME.registerComponent('ray-grab', {
         this._ui();
         this._buildLane();
         this.resetFrame();
+        this._scoreboardInit();
+        this._initMatch(this._defaultNames(this.data.playersCount));
 
         // Hauteur VR : y=0 en VR, y=1.6 sur desktop
         const scene = this.el.sceneEl;
@@ -198,6 +204,18 @@ AFRAME.registerComponent('ray-grab', {
             rig.setAttribute('position',{x:p.x,y:1.6,z:baseZ});
           });
         }
+        // --- Quick throw via bouton Y du contrôleur GAUCHE ---
+        const leftCtl = document.getElementById('leftCtl');
+        if (leftCtl){
+          this._onYDown = () => this._buttonThrowFrom(leftCtl, 6.8); // 6.8 = vitesse; ajuste si besoin
+          leftCtl.addEventListener('ybuttondown', this._onYDown);
+        }
+      },
+      _defaultNames(n){
+        n = Math.max(1, Math.min(4, n|0));
+        const arr = [];
+        for (let i = 1; i <= n; i++) arr.push('J' + i);
+        return arr;
       },
 
       // -------- UI & helpers --------
@@ -220,10 +238,517 @@ AFRAME.registerComponent('ray-grab', {
           btn.addEventListener('click', ()=> this.spawnBall(i,true));
         });
         document.getElementById('resetAll').addEventListener('click', ()=> this.resetFrame(true));
+
+        // ----- Sélecteur du nombre de joueurs -----
+        const pchips = document.querySelectorAll('.playerCount');
+        const applyPlayers = (n)=>{
+          this.data.playersCount = n;
+          // (ré)initialise J1..Jn et régénère la frame d'entraînement
+          this._initMatch(this._defaultNames(n));
+          this.resetFrame(true); // quilles + boule + écrans
+          // feedback visuel
+          pchips.forEach(c=>c.classList.remove('active'));
+          document.querySelector(`.playerCount[data-players="${n}"]`)?.classList.add('active');
+          this._toast(`Match configuré pour ${n} joueur${n>1?'s':''}.`);
+        };
+        // clics sur 1/2/3/4
+        pchips.forEach(ch=>{
+          ch.addEventListener('click', ()=> applyPlayers(+ch.dataset.players));
+        });
+        // état initial (surligne la puce correspondant à la valeur courante)
+        document.querySelector(`.playerCount[data-players="${this.data.playersCount}"]`)?.classList.add('active');
       },
-      _setStatus(t){ this._statusEl.textContent=t; },
-      _setScore(){ this._scoreEl.textContent = `Lancers: ${this.throws}/2 • Quilles tombées: ${this.downSet.size} • Score frame: ${this.scoreThisFrame}`; },
+      
+      _setStatus(t){
+        if (this._statusEl) this._statusEl.textContent = t;
+        this._renderScoreboard();
+      },
+      _setScore(){
+        if (this._scoreEl)
+          this._scoreEl.textContent = `Lancers: ${this.throws}/2 • Quilles tombées: ${this.downSet.size} • Score frame: ${this.scoreThisFrame}`;
+        this._renderScoreboard();
+      },
+
       _toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 1500); },
+
+
+
+      _buttonThrowFrom(ctrlEl, speed = 6.8){
+      // 1) (re)crée une boule standard
+      this.spawnBall(1, false);
+      const b = this._ball;
+      const scene = this.el.sceneEl;
+
+      // 2) direction = avant du contrôleur, aplatie au sol
+      const o3d = ctrlEl.object3D;
+      const q = new THREE.Quaternion(), pos = new THREE.Vector3();
+      o3d.getWorldQuaternion(q);
+      o3d.getWorldPosition(pos);
+
+      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(q);
+      dir.y = 0; if (dir.lengthSq() < 1e-6) dir.set(0,0,-1);
+      dir.normalize();
+
+      // départ: ~40 cm devant la main, posé bas
+      const start = pos.clone().add(dir.clone().multiplyScalar(0.4));
+      start.y = 0.18;
+      b.setAttribute('position', `${start.x} ${start.y} ${start.z}`);
+
+      // 3) applique la vélocité + spin de roulement quand le body est prêt
+      const apply = ()=>{
+        const v = dir.clone().multiplyScalar(speed);
+        b.body.velocity.set(v.x, v.y, v.z);
+
+        const up = new THREE.Vector3(0,1,0);
+        const vh = new THREE.Vector3(v.x,0,v.z);
+        const r  = b.getAttribute('radius') || 0.12;
+        const omega = up.clone().cross(vh).multiplyScalar(1/Math.max(r,0.001));
+        b.body.angularVelocity.set(omega.x, omega.y, omega.z);
+
+        try{
+          const wp = b.object3D.getWorldPosition(new THREE.Vector3());
+          playAt(scene,'sndThrow',wp);
+        }catch(_){}
+      };
+      if (b.body) apply(); else b.addEventListener('body-loaded', apply);
+    },
+
+
+
+
+      // --- ÉCRAN: init du canvas + références ---
+      _scoreboardInit(){
+        this._scoreCanvas = document.getElementById('scoreCanvas');
+        this._sbPlane = document.getElementById('scoreboardPlane');
+        this._sbCtx = this._scoreCanvas && this._scoreCanvas.getContext('2d');
+        this._lastDownCount = -1;
+        this._renderScoreboard();
+      },
+
+      // --- ÉCRAN: rendu (statut + schéma des 10 quilles) ---
+      _renderScoreboard(){
+        const c = this._scoreCanvas, ctx = this._sbCtx;
+        if (!c || !ctx) return;
+
+        const W = c.width, H = c.height;
+        // fond
+        ctx.clearRect(0,0,W,H);
+        const g = ctx.createLinearGradient(0,0,0,H);
+        g.addColorStop(0,'#0b1118'); g.addColorStop(1,'#0e1622');
+        ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+        // titre + infos
+        ctx.fillStyle='#9bdcff'; ctx.font='bold 42px system-ui,Segoe UI,Roboto';
+        ctx.fillText('VR BOWLING', 36, 64);
+        ctx.fillStyle='#cbd5e1'; ctx.font='24px system-ui,Segoe UI,Roboto';
+        ctx.fillText(`Difficulté : ${this.data.difficulty}`, 36, 108);
+
+        // statut + score
+        const scoreLine = `Lancers: ${this.throws}/2   •   Quilles tombées: ${this.downSet.size}   •   Score frame: ${this.scoreThisFrame}`;
+        ctx.fillStyle='#a7f3d0'; ctx.font='28px system-ui,Segoe UI,Roboto';
+        ctx.fillText(scoreLine, 36, 190);
+
+        // schéma 10 quilles (1 devant, 4 au fond)
+        const fallen = new Set(Array.from(this.downSet).map(p => +p.dataset.pinIndex || 0));
+        const layout = [
+          [{x:0,y:0}],
+          [{x:-1,y:1},{x:1,y:1}],
+          [{x:-2,y:2},{x:0,y:2},{x:2,y:2}],
+          [{x:-3,y:3},{x:-1,y:3},{x:1,y:3},{x:3,y:3}]
+        ].flat();
+
+        const cx = W - 260;   // position horizontale (plus à droite)
+        const cy = 280;       // position verticale (plus bas)
+        const S  = 42;        // espacement entre rangées (légèrement plus grand)
+        ctx.fillStyle='#cbd5e1'; ctx.font='22px system-ui,Segoe UI,Roboto';
+        ctx.fillText('Quilles', cx - 36, cy - 110);
+
+        layout.forEach((p,i)=>{
+          const xi = cx + p.x*S, yi = cy + p.y*S, idx = i+1;
+          const isDown = fallen.has(idx);
+          ctx.beginPath(); ctx.arc(xi, yi, 16, 0, Math.PI*2);
+          ctx.fillStyle = isDown ? '#64748b' : '#ffffff'; ctx.fill();
+          ctx.lineWidth=3; ctx.strokeStyle = isDown ? '#475569' : '#94a3b8'; ctx.stroke();
+          ctx.fillStyle = isDown ? '#94a3b8' : '#0b1118';
+          ctx.font='bold 16px system-ui,Segoe UI,Roboto';
+          const txt = String(idx), w = ctx.measureText(txt).width;
+          ctx.fillText(txt, xi - w/2, yi + 6);
+        });
+
+        // rafraîchir la texture sur le <a-plane>
+        try{
+          const mat = this._sbPlane?.components?.material?.material;
+          if (mat && mat.map) mat.map.needsUpdate = true;
+        }catch(e){}
+
+      const mesh = this._sbPlane && this._sbPlane.getObject3D('mesh');
+      if (mesh && mesh.material && mesh.material.map) {
+        mesh.material.map.needsUpdate = true;
+        }
+      },
+
+
+
+
+      /* ===================== SCOREBOARD (4 joueurs / 10 frames) ===================== */
+
+        // -- Initialisation du match (4 joueurs par défaut) --
+        _initMatch(names = ['J1','J2','J3','J4']){
+          this.players = names.map(n => ({
+            name:n,
+            frames: new Array(10).fill(0).map(()=>({rolls:[], score:null, cum:null}))
+          }));
+          this.currP = 0;     // joueur courant (0..3)
+          this.currF = 0;     // frame courante (0..9)
+          this.currRoll = 0;  // lancer dans la frame (0,1,2 au 10e)
+          // canvases
+          this._mainCanvas = document.getElementById('scoreMain');
+          this._mainCtx    = this._mainCanvas?.getContext('2d');
+          this._mainPlane  = document.getElementById('mainBoardPlane');
+          this._renderMainBoard();
+        },
+
+        // -- Rendu du tableau des scores --
+        _renderMainBoard(){
+          const c=this._mainCanvas, ctx=this._mainCtx; if(!c||!ctx) return;
+          const W=c.width, H=c.height;
+          // fond
+          ctx.clearRect(0,0,W,H);
+          const g=ctx.createLinearGradient(0,0,0,H);
+          g.addColorStop(0,'#0b1118'); g.addColorStop(1,'#0e1622');
+          ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+          // titre
+          ctx.fillStyle='#9bdcff'; ctx.font='bold 56px system-ui,Segoe UI,Roboto';
+          ctx.fillText('SCORES', 36, 70);
+
+          // grille (10 frames + total)
+          const N = Math.max(1, this.players?.length || 1);
+          const left = 260, top = 120, nameW = 220, cellW = 140, totalW = 180;
+          // on répartit l'espace vertical restant entre les N joueurs
+          const rowH = Math.floor((H - top - 120) / N);
+
+
+          // en-têtes frame
+          ctx.fillStyle='#cbd5e1'; ctx.font='24px system-ui,Segoe UI,Roboto';
+          ctx.fillText('Total', left + nameW + 10*cellW + totalW/2 - 24, top - 16);
+
+          // lignes joueurs
+          for(let p=0; p<this.players.length; p++){
+            const py = top + p*rowH;
+            
+            // surlignage doux de la ligne du joueur courant
+            const rowBgW = nameW + 10*cellW + totalW;
+            if (p === this.currP) {
+              ctx.fillStyle = 'rgba(34,211,238,0.07)'; // cyan très léger
+              ctx.fillRect(left, py, rowBgW, rowH-24);
+            }
+
+
+            // nom
+            ctx.fillStyle='#e5e7eb'; ctx.font='bold 36px system-ui,Segoe UI,Roboto';
+            ctx.fillText(this.players[p].name, left, py + 42);
+
+            for (let f = 0; f < 10; f++) {
+              const x = left + nameW + f*cellW;
+              const cellH = rowH - 24;
+              const headerH = 32;                   // barre bleue style Wii
+              const playTop = py + headerH;
+              const playBottom = py + cellH;
+              const fr = this.players[p].frames[f];
+
+              // contour
+              ctx.strokeStyle = '#334155';
+              ctx.lineWidth = 3;
+              ctx.strokeRect(x, py, cellW, cellH);
+
+              // --- barre bleue + numéro ---
+              const grad = ctx.createLinearGradient(x, py, x, py+headerH);
+              grad.addColorStop(0,'#1ea0ff');
+              grad.addColorStop(1,'#1676d6');
+              ctx.fillStyle = grad;
+              ctx.fillRect(x, py, cellW, headerH);
+
+              ctx.save();
+              ctx.fillStyle='#e6f4ff';
+              ctx.font='bold 18px system-ui,Segoe UI,Roboto';
+              ctx.textAlign='center';
+              ctx.textBaseline='middle';
+              ctx.fillText(String(f+1), x + cellW/2, py + headerH/2);
+              ctx.restore();
+
+              // ombre sous la barre bleue
+              ctx.fillStyle = 'rgba(0,0,0,0.28)';
+              ctx.fillRect(x, py + headerH, cellW, 1.5);
+
+              // fond bas
+              const pgrad = ctx.createLinearGradient(x, playTop, x, playBottom);
+              pgrad.addColorStop(0,'#122b3a');
+              pgrad.addColorStop(1,'#0d1f2b');
+              ctx.fillStyle = pgrad;
+              ctx.fillRect(x+1.5, playTop+1.5, cellW-3, playBottom - playTop - 3);
+
+              // --- grille "Wii" médiane (OK) ---
+              ctx.lineCap = 'butt';
+              ctx.lineJoin = 'miter';
+              ctx.miterLimit = 2;
+
+              const midY   = Math.round(playTop + (playBottom - playTop) * 0.55); // ligne médiane
+              const inset  = Math.round(cellW * 0.08);                            // marge intérieure
+              const baseLeft  = x + inset;
+              const baseRight = x + cellW - inset;
+              const midX  = x + Math.round(cellW / 2);
+              const topCap = playTop + 6;                                         // butée haute sous la barre
+              const L = 16;                                                        // longueur petite branche
+
+              ctx.strokeStyle = '#77a9c6';
+              ctx.lineWidth = 2;
+
+              // 1) ligne horizontale médiane (de gauche à droite)
+              ctx.beginPath();
+              ctx.moveTo(baseLeft,  midY);
+              ctx.lineTo(baseRight, midY);
+              ctx.stroke();
+
+              // 2) utilitaire : un "L" qui part du MILIEU vers le HAUT
+              function drawLUp(xp, dir = +1){
+                // verticale (milieu -> haut)
+                ctx.beginPath();
+                ctx.moveTo(xp, midY);
+                ctx.lineTo(xp, topCap);
+                ctx.stroke();
+                // petite branche horizontale au niveau du milieu
+                ctx.beginPath();
+                ctx.moveTo(xp, midY);
+                ctx.lineTo(xp + dir*L, midY); // dir=+1 → droite, dir=-1 → gauche
+                ctx.stroke();
+              }
+
+              if (f < 9) {
+              // côtés + séparateur central
+              drawLUp(baseLeft,  +1);   // gauche → droite
+              drawLUp(midX,      +1);   // séparateur → droite
+              drawLUp(baseRight, -1);   // droite  ← gauche
+
+              // --- marques (lancer 1 / lancer 2) EN HAUT, CENTRÉES ---
+              const r1 = fr.rolls[0], r2 = fr.rolls[1];
+              if (r1 != null || r2 != null) {
+                const m1 = (r1 === 10) ? 'X' : (r1 == null ? '' : String(r1));
+                const m2 = (r1 === 10) ? ''  : (
+                  (r1 != null && r2 != null && r1 + r2 === 10) ? '/' :
+                  (r2 == null ? '' : String(r2))
+                );
+
+                const markY   = py + headerH + 25;      // juste sous la barre bleue
+                const centerL = (baseLeft + midX) / 2; // centre demi-case gauche
+                const centerR = (midX + baseRight) / 2;// centre demi-case droite
+
+                ctx.save();
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = 'bold 24px system-ui,Segoe UI,Roboto';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(m1, centerL, markY);      // lancer 1
+                ctx.fillText(m2, centerR, markY);      // lancer 2
+                ctx.restore();
+              }
+            } else {
+              // 10e : 3 sous-zones (2 séparateurs)
+              const third = cellW / 3;
+              const s1 = x + Math.round(third);
+              const s2 = x + Math.round(2 * third);
+
+              // grille "L" (gauche, séparateurs, droite)
+              drawLUp(baseLeft,  +1);
+              drawLUp(s1,        +1);
+              drawLUp(s2,        +1);
+              drawLUp(baseRight, -1);
+
+              // --- 10e frame : 3 marques EN HAUT, CENTRÉES dans chaque tiers ---
+              const r = fr.rolls;
+              const mark = (i)=>{
+                if (r[i]==null) return '';
+                if (i===0 && r[0]===10) return 'X';
+                if (i===1){
+                  if (r[0]===10 && r[1]===10) return 'X';
+                  if (r[0] < 10 && (r[0] + r[1] === 10)) return '/';
+                }
+                if (i===2){
+                  if (r[0]===10 && r[1]===10 && r[2]===10) return 'X';
+                  if ((r[0]===10 && r[1] < 10 && r[1]+r[2]===10) ||
+                      (r[0] < 10 && r[0]+r[1]===10 && r[2]!==10)) return '/';
+                }
+                return String(r[i]);
+              };
+
+              const markY   = py + headerH + 25;           // juste sous la barre bleue
+              const center1 = (baseLeft + s1) / 2;        // centres des 3 tiers
+              const center2 = (s1 + s2) / 2;
+              const center3 = (s2 + baseRight) / 2;
+
+              ctx.save();
+              ctx.fillStyle = '#e2e8f0';
+              ctx.font = 'bold 24px system-ui,Segoe UI,Roboto';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'top';
+              ctx.fillText(mark(0), center1, markY);
+              ctx.fillText(mark(1), center2, markY);
+              ctx.fillText(mark(2), center3, markY);
+              ctx.restore();
+            }
+
+
+
+              // --- score cumulé en BAS, CENTRÉ dans la case ---
+              const started = fr.rolls && fr.rolls.some(v => v != null);
+              if (started && fr.cum != null){
+                ctx.save();
+                ctx.fillStyle = '#c6e1ff';
+                ctx.font = '20px system-ui,Segoe UI,Roboto';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                const cumX = x + cellW / 2;  // centre horizontal de la case
+                const cumY = playBottom - 25; // 6 px au-dessus du bas de la case
+                ctx.fillText(String(fr.cum), cumX, cumY);
+
+                ctx.restore();
+              }
+            }
+
+
+            // total final
+            // total final = dernier cumulé d'une frame réellement commencée (sinon vide)
+            let tot = null;
+            for (let ff = 9; ff >= 0; ff--){
+              const fr2 = this.players[p].frames[ff];
+              const started2 = fr2.rolls && fr2.rolls.some(v => v != null);
+              if (started2 && fr2.cum != null) { tot = fr2.cum; break; }
+            }
+
+            const tx  = left + nameW + 10*cellW;
+            // nettoie/opaque la cellule Total
+            ctx.fillStyle = 'rgba(11,17,24,0.92)';
+            ctx.fillRect(tx+1, py+1, totalW-2, rowH-26);
+            ctx.strokeStyle='#334155'; ctx.lineWidth=3; ctx.strokeRect(tx, py, totalW, rowH-24);
+            if (tot != null){
+              ctx.fillStyle='#a7f3d0'; ctx.font='bold 32px system-ui,Segoe UI,Roboto';
+              ctx.textAlign='center';
+              ctx.textBaseline='middle';
+              ctx.fillText(String(tot), tx + totalW/2, py + (rowH-24)/2);
+            }
+
+          }
+
+          // highlight du joueur/frame en cours
+          try{
+            const x = left + nameW + this.currF*cellW;
+            const y = top + this.currP*rowH;
+            ctx.strokeStyle='#22d3ee'; ctx.lineWidth=5;
+            ctx.strokeRect(x+2, y+2, cellW-4, rowH-28);
+          }catch(e){}
+
+          // push texture
+          try{
+            const mat = this._mainPlane?.components?.material?.material;
+            if (mat && mat.map) mat.map.needsUpdate = true;
+            const mesh = this._mainPlane?.getObject3D('mesh');
+            if (mesh && mesh.material && mesh.material.map) mesh.material.map.needsUpdate = true;
+          }catch(e){}
+        },
+
+        // -- Calcul des scores (règles bowling) --
+        _computeScores(){
+          for (const p of this.players){
+            // aplanir les lancers
+            const rolls = [];
+            for (let f=0; f<9; f++){
+              const r=p.frames[f].rolls;
+              if (r[0]===10) { rolls.push(10); } else { rolls.push(r[0]||0, r[1]||0); }
+            }
+            // 10e frame (0..3 lancers)
+            const r10=p.frames[9].rolls; for (const v of r10) if (v!=null) rolls.push(v);
+
+            // score frame par frame
+            let i=0, cum=0;
+            for (let f=0; f<10; f++){
+              let frameScore=null;
+              if (f<9){
+                if (rolls[i]===10){ // strike
+                  frameScore = 10 + (rolls[i+1]??0) + (rolls[i+2]??0);
+                  i += 1;
+                }else{
+                  const a=rolls[i]??0, b=rolls[i+1]??0;
+                  if (a+b===10){ // spare
+                    frameScore = 10 + (rolls[i+2]??0);
+                  }else{
+                    frameScore = a+b;
+                  }
+                  i += 2;
+                }
+              }else{
+                // 10e: somme des lancers présents
+                const a=rolls[i]??0, b=rolls[i+1]??0, c=rolls[i+2]??0;
+                frameScore = a + (rolls[i+1]!=null?b:0) + (rolls[i+2]!=null?c:0);
+              }
+              cum = (frameScore!=null)? (cum + frameScore) : cum;
+              p.frames[f].score = frameScore;
+              p.frames[f].cum   = cum;
+            }
+          }
+          this._renderMainBoard();
+        },
+
+        // -- Enregistrer un lancer terminé (nb de quilles tombées) --
+        _registerThrow(pins){
+          const P=this.players[this.currP], F=P.frames[this.currF];
+          // bornes en cas d’artefact
+          if (pins<0) pins=0;
+          if (this.currF<9){
+            if (this.currRoll===0){
+              F.rolls[0]=pins;
+              if (pins===10){ // STRIKE
+                this._advanceTurn(true); // fin de frame
+              }else{
+                this.currRoll=1; // 2e lancer à venir
+              }
+            }else{
+              F.rolls[1]=pins;
+              this._advanceTurn(true); // fin de frame
+            }
+          }else{
+            // 10e frame
+            if (this.currRoll===0){
+              F.rolls[0]=pins; this.currRoll=1;
+            }else if (this.currRoll===1){
+              F.rolls[1]=pins;
+              if ( (F.rolls[0]===10) || ((F.rolls[0]||0)+(F.rolls[1]||0)===10) ){
+                this.currRoll=2; // balle bonus
+              }else{
+                this._advanceTurn(true);
+              }
+            }else{
+              F.rolls[2]=pins;
+              this._advanceTurn(true);
+            }
+          }
+          this._computeScores();
+        },
+
+        // -- Avancer au prochain joueur / frame, puis redessiner --
+        _advanceTurn(resetPins){
+          // joueur suivant
+          if (this.currP < this.players.length-1){ this.currP++; }
+          else { this.currP=0; if (this.currF<9) this.currF++; }
+          this.currRoll=0;
+          // reset visuel si demandé (la physique fait déjà un reset après strike/2e lancer)
+          this._renderMainBoard();
+        },
+
+
+
+
+
 
       // -------- Construction de la piste --------
       _buildLane(){
@@ -298,7 +823,7 @@ AFRAME.registerComponent('ray-grab', {
       spawnPins(){
         this._pins.forEach(p=>p.remove()); this._pins.length=0;
         const base = new THREE.Vector3(0, 0.225, this.data.pinZ);
-        const dx = 0.18, dz = 0.32; // espacements
+        const dx = 0.18, dz = -0.32; // espacements
         const rows = [
           [{x:0,        z:0}],
           [{x:-dx/2,   z:dz},       {x:+dx/2, z:dz}],
@@ -325,6 +850,7 @@ AFRAME.registerComponent('ray-grab', {
             }
           });
           this.el.sceneEl.appendChild(pin);
+          pin.dataset.pinIndex = String(this._pins.length + 1);
           this._pins.push(pin);
         });
       },
@@ -374,6 +900,11 @@ AFRAME.registerComponent('ray-grab', {
             this.downSet.add(pin);
           }
         });
+        if (this._lastDownCount !== this.downSet.size){
+          this._lastDownCount = this.downSet.size;
+          this._renderScoreboard();
+}
+
 
         if (this._ball && this._ball.body){
           const v = this._ball.body.velocity.length();
@@ -383,6 +914,7 @@ AFRAME.registerComponent('ray-grab', {
             // passe en jeu si franchit la ligne de faute avec vitesse
             if (!held && z < this.data.foulZ - 0.05 && v > 0.2){
               this.inPlay = true;
+              this._startDownCount = this.downSet.size;
               this.throws += 1;
               this._setScore();
             }
@@ -395,10 +927,17 @@ AFRAME.registerComponent('ray-grab', {
         }
       },
 
+
+
       _finishThrow(){
         if (!this.inPlay) return;
         this.inPlay=false;
         const fallenNow = this.downSet.size;
+        const knocked   = Math.max(0, fallenNow - (this._startDownCount || 0));
+
+        // -> enregistre ce lancer dans le tableau des scores
+        this._registerThrow(knocked);
+
         this.scoreThisFrame = fallenNow;
 
         if (this.throws===1 && fallenNow===10){
@@ -424,6 +963,32 @@ AFRAME.registerComponent('ray-grab', {
         this._setScore();
       }
     });
+
+    // Bouton VR : envoie une action au jeu quand on clique au laser
+    AFRAME.registerComponent('vrbtn', {
+      schema: { action:{default:''}, value:{default:''} },
+      init(){
+        const hoverIn  = () => this.el.setAttribute('material','color:#0ea5e9; opacity:0.95');
+        const hoverOut = () => this.el.setAttribute('material','color:#1f2937; opacity:0.9');
+        this.onClick = () => {
+          const game = this.el.sceneEl.components['bowling-game']; if(!game) return;
+          const v = this.data.value;
+          switch (this.data.action) {
+            case 'diff': game.data.difficulty = v; game._applyDifficulty(); game._toast(`Difficulté: ${v}`); break;
+            case 'ball': game.spawnBall(parseInt(v,10), true); break;
+            case 'players': game._initMatch(game._defaultNames(parseInt(v,10))); game.resetFrame(true); break;
+            case 'reset': game.resetFrame(true); break;
+          }
+        };
+        this.el.classList.add('ui-hit');
+        this.el.addEventListener('mouseenter', hoverIn);
+        this.el.addEventListener('mouseleave', hoverOut);
+        this.el.addEventListener('click', this.onClick);
+        hoverOut();
+      },
+      remove(){ this.el.removeEventListener('click', this.onClick); }
+});
+
   </script>
 </head>
 <body>
@@ -451,6 +1016,15 @@ AFRAME.registerComponent('ray-grab', {
       <button data-ball="2">Lourde</button>
       <button id="resetAll" style="margin-left:auto;background:#374151">Réinit. piste</button>
     </div>
+
+    <div style="margin-top:6px;margin-bottom:6px">Joueurs :</div>
+    <div class="row" id="playersPicker" style="margin-bottom:10px">
+      <div class="chip playerCount" data-players="1">1</div>
+      <div class="chip playerCount" data-players="2">2</div>
+      <div class="chip playerCount" data-players="3">3</div>
+      <div class="chip playerCount" data-players="4">4</div>
+    </div>
+
     <small style="opacity:.8">Mode entraînement : 1 frame, jusqu’à 2 lancers. Strike ⇒ reset immédiat.</small>
   </div>
 
@@ -469,6 +1043,8 @@ AFRAME.registerComponent('ray-grab', {
       <audio id="sndPin"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndStrike" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndEnd"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+      <canvas id="scoreCanvas" width="1024" height="512"></canvas>
+      <canvas id="scoreMain" width="2048" height="1024"></canvas>
     </a-assets>
 
     <!-- Lumières -->
@@ -479,12 +1055,15 @@ AFRAME.registerComponent('ray-grab', {
     <a-entity id="rig" position="0 1.6 2.8">
       <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
 
+
+
       <!-- Main gauche -->
       <a-entity id="leftCtl"
         oculus-touch-controls="hand: left"
         left-stick-move="rig:#rig; speed:2.0; dead:0.18"
         laser-controls="hand: left"
-        raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
+        raycaster="objects:.grab-target:not(.held), .ui-hit; showLine:true; far:6; interval:0"
+        cursor="rayOrigin: entity; fuse: false"
         static-body="shape: sphere; sphereRadius: 0.04"
         ray-grab>
       </a-entity>
@@ -494,11 +1073,107 @@ AFRAME.registerComponent('ray-grab', {
         oculus-touch-controls="hand: right"
         right-stick-smoothturn="rig:#rig; speedDeg:140; dead:0.18"
         laser-controls="hand: right"
-        raycaster="objects:.grab-target:not(.held); showLine:true; far:6; interval:0"
+        raycaster="objects:.grab-target:not(.held), .ui-hit; showLine:true; far:6; interval:0"
+        cursor="rayOrigin: entity; fuse: false"
         static-body="shape: sphere; sphereRadius: 0.04"
         ray-grab>
       </a-entity>
     </a-entity>
+
+
+    <!-- Structure plafond + moniteurs (clean pitch/yaw) -->
+  <a-entity id="overheadRig" position="0 5.6 -3.0" rotation="0 0 0">
+    <!-- Barre -->
+    <a-box position="0 0 -0.2" width="6.2" height="0.08" depth="0.12" color="#1c2430"></a-box>
+
+    <!-- Tiges -->
+    <a-box position="-2.9 -0.45 -0.2" width="0.06" height="0.90" depth="0.06" color="#1c2430"></a-box>
+    <a-box position=" 2.9 -0.45 -0.2" width="0.06" height="0.90" depth="0.06" color="#1c2430"></a-box>
+
+    <!-- Écran gauche -->
+  <a-entity position="-3.2 -0.60 0" rotation="8 3 0" scale="2 2 1">
+    <a-plane id="mainBoardPlane"
+            width="3" height="1.5"
+            material="shader:flat; src:#scoreMain; side:double; transparent:true"></a-plane>
+    <a-box position="0 -0.90 0" width="3.3" height="0.06" depth="0.05" color="#0b1118"></a-box>
+  </a-entity>
+
+  <!-- Écran droit -->
+  <a-entity position=" 3.2 -0.60 0" rotation="8 -3 0" scale="2 2 1">
+    <a-plane id="scoreboardPlane"
+            width="3" height="1.5"
+            material="shader:flat; src:#scoreCanvas; side:double; transparent:true"></a-plane>
+    <a-box position="0 -0.90 0" width="3.3" height="0.06" depth="0.05" color="#0b1118"></a-box>
+  </a-entity>
+</a-entity>
+
+
+
+
+
+
+        <!-- Panneau de réglages VR -->
+        <a-entity id="vrMenu" position="-2.1 1.35 -0.6" rotation="0 20 0" scale="1.9 1.9 1">
+          <!-- Fond unique -->
+          <a-plane id="vrMenuBg"
+            position="-0.35 0 0.01"
+            width="2.35" height="1.25"
+            color="#0b1118"
+            material="opacity:0.92; side:double">
+          </a-plane>
+
+
+          <!-- Titre (même Z pour tout: 0.02 ou 0.03) -->
+          <a-entity position="-0.68 0.43 0.02"
+                    text="value:Reglages VR; color:#9bdcff; width:2.6; align:left"></a-entity>
+
+          <!-- Libellé Difficulté -->
+          <a-entity position="-0.68 0.29 0.02"
+                    text="value:Difficulté; color:#cbd5e1; width:2.2; align:left"></a-entity>
+          <!-- Boutons difficulté -->
+          <a-plane position="-0.46 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:easy"></a-plane>
+          <a-entity position="-0.46 0.18 0.03" text="value:Facile; align:center; width:1.8"></a-entity>
+
+          <a-plane position="-0.10 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:normal"></a-plane>
+          <a-entity position="-0.10 0.18 0.03" text="value:Normal; align:center; width:1.8"></a-entity>
+
+          <a-plane position="0.26 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:hard"></a-plane>
+          <a-entity position="0.26 0.18 0.03" text="value:Difficile; align:center; width:1.8"></a-entity>
+
+          <!-- Libellé Boules -->
+          <a-entity position="-0.68 0.04 0.02"
+                    text="value:Boules; color:#cbd5e1; width:2.2; align:left"></a-entity>
+          <!-- Boutons boules -->
+          <a-plane position="-0.46 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:0"></a-plane>
+          <a-entity position="-0.46 -0.07 0.03" text="value:Légère; align:center; width:1.8"></a-entity>
+
+          <a-plane position="-0.10 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:1"></a-plane>
+          <a-entity position="-0.10 -0.07 0.03" text="value:Standard; align:center; width:1.8"></a-entity>
+
+          <a-plane position="0.26 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:2"></a-plane>
+          <a-entity position="0.26 -0.07 0.03" text="value:Lourde; align:center; width:1.8"></a-entity>
+
+          <!-- Libellé Joueurs -->
+          <a-entity position="-0.68 -0.21 0.02"
+                    text="value:Joueurs; color:#cbd5e1; width:2.2; align:left"></a-entity>
+          <!-- Boutons joueurs -->
+          <a-plane position="-0.46 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:1"></a-plane>
+          <a-entity position="-0.46 -0.32 0.03" text="value:1; align:center; width:1.4"></a-entity>
+
+          <a-plane position="-0.22 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:2"></a-plane>
+          <a-entity position="-0.22 -0.32 0.03" text="value:2; align:center; width:1.4"></a-entity>
+
+          <a-plane position="0.02 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:3"></a-plane>
+          <a-entity position="0.02 -0.32 0.03" text="value:3; align:center; width:1.4"></a-entity>
+
+          <a-plane position="0.26 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:4"></a-plane>
+          <a-entity position="0.26 -0.32 0.03" text="value:4; align:center; width:1.4"></a-entity>
+
+          <!-- Réinitialisation -->
+          <a-plane position="0.52 -0.32 0.02" width="0.32" height="0.11" vrbtn="action:reset; value:1"></a-plane>
+          <a-entity position="0.52 -0.32 0.03" text="value:Réinit.; align:center; width:1.8"></a-entity>
+        </a-entity>
+
 
     <!-- Fond -->
     <a-sky color="#0b0f14"></a-sky>
