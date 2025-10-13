@@ -24,7 +24,7 @@
     .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:#111c;padding:8px 12px;border-radius:10px;border:1px solid #2b3340;z-index:10;display:none}
     .toast.show{display:block}
   </style>
-
+  
   <script>
     // ---------- Déplacements stick gauche ----------
     AFRAME.registerComponent('left-stick-move', {
@@ -157,21 +157,21 @@ AFRAME.registerComponent('ray-grab', {
 
     // ---------- Jeu ----------
     const DIFFS = {
-      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.70, wobble: 0.00 },
-      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.80, wobble: 0.03 },
-      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.95, wobble: 0.08 }
+      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.503, wobble: 0.00 },
+      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.74, wobble: 0.03 },
+      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.9, wobble: 0.08 }
     };
     const BALLS = [
-      {name:'Legere',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
-      {name:'Standard',radius:0.122, mass:5.0,  color:'#8bff9f'},
-      {name:'Lourde',  radius:0.128, mass:7.25, color:'#ff8bd1'}
+      {name:'Légère',  radius:0.115, mass:3.0,  color:'blue'}, // #479aa5
+      {name:'Standard',radius:0.122, mass:5.0,  color:'green'}, // #32CD32
+      {name:'Lourde',  radius:0.128, mass:7.25, color:'pink'} // #f79ac5
     ];
 
     AFRAME.registerComponent('bowling-game', {
       schema:{
         difficulty:{default:'normal'},
-        laneLength:{default:18},
-        laneWidth:{default:1.4},
+        laneLength:{default:19.225},
+        laneWidth:{default:1.06},
         foulZ:{default:0.0},
         pinZ:{default:-12.0},
         playersCount:{default:4}
@@ -764,24 +764,62 @@ AFRAME.registerComponent('ray-grab', {
 
         // Sol
         const ground = document.createElement('a-plane');
+        ground.setAttribute('position','0 0 2.5');
         ground.setAttribute('rotation','-90 0 0');
-        ground.setAttribute('width', 30);
-        ground.setAttribute('height', 30);
+        ground.setAttribute('width', 40);
+        ground.setAttribute('height', 5);
         ground.setAttribute('color', '#2a2f38');
+        ground.setAttribute('material', 'visible: false');
         ground.setAttribute('static-body','');
         ground.setAttribute('shadow','receive:true');
         scene.appendChild(ground);
 
+        // Boundaries (invisibles)
+        const bounds = [
+          document.createElement('a-box'), // arrière
+          document.createElement('a-box'), // avant-droit
+          document.createElement('a-box'), // avant-gauche
+          document.createElement('a-box'), // gauche
+          document.createElement('a-box')  // droite
+        ]
+        bounds[0].setAttribute('position', `0 2 5`);
+        bounds[0].setAttribute('width', 40);
+        bounds[0].setAttribute('height', 5);
+        bounds[0].setAttribute('depth', .85);
+        bounds[1].setAttribute('position', `11 2 -10`);
+        bounds[1].setAttribute('width', 20);
+        bounds[1].setAttribute('height', 5);
+        bounds[1].setAttribute('depth', 20);
+        bounds[2].setAttribute('position', `-11 2 -10`);
+        bounds[2].setAttribute('width', 20);
+        bounds[2].setAttribute('height', 5);
+        bounds[2].setAttribute('depth', 20);
+        bounds[3].setAttribute('position', `20 2 2.5`);
+        bounds[3].setAttribute('rotation', '0 90 0');
+        bounds[3].setAttribute('width', 5);
+        bounds[3].setAttribute('height', 5);
+        bounds[3].setAttribute('depth', 1);
+        bounds[4].setAttribute('position', `-20 2 2.5`);
+        bounds[4].setAttribute('rotation', '0 90 0');
+        bounds[4].setAttribute('width', 5);
+        bounds[4].setAttribute('height', 5);
+        bounds[4].setAttribute('depth', 1);
+        bounds.forEach(b=>{
+          b.setAttribute('material', 'visible: false');
+          b.setAttribute('static-body','');
+          scene.appendChild(b);
+        });
+
         // Piste
         this._lane = document.createElement('a-box');
-        this._lane.setAttribute('position', `0 0.02 ${-this.data.laneLength/2}`);
+        this._lane.setAttribute('position', `0 -0.02 ${-this.data.laneLength/2}`);
         this._lane.setAttribute('width', this.data.laneWidth);
         this._lane.setAttribute('height', 0.04);
         this._lane.setAttribute('depth', this.data.laneLength);
         this._lane.setAttribute('color', '#886544');
-        this._lane.setAttribute('material', 'roughness:0.6; metalness:0.0');
+        this._lane.setAttribute('material', 'roughness:0.6; metalness:0.0; visible:false');
         this._lane.setAttribute('static-body','');
-        this._lane.setAttribute('shadow','receive:true');
+        this._lane.setAttribute('shadow','receive:true; cast:false');
         scene.appendChild(this._lane);
 
         // Murs/gouttières
@@ -791,7 +829,8 @@ AFRAME.registerComponent('ray-grab', {
           const side = idx?1:-1;
           w.setAttribute('position', `${side*(this.data.laneWidth/2+0.4)} 0.2 ${-this.data.laneLength/2}`);
           w.setAttribute('width', 0.2); w.setAttribute('height', 0.4); w.setAttribute('depth', this.data.laneLength);
-          w.setAttribute('color','#1f2937'); w.setAttribute('static-body','');
+          w.setAttribute('material', 'opacity: 0.2; emissive:#a5eff7');
+          w.setAttribute('color','#a5eff7'); w.setAttribute('static-body','');
           scene.appendChild(w);
         });
 
@@ -801,6 +840,7 @@ AFRAME.registerComponent('ray-grab', {
         rack.setAttribute('width', 1.6);
         rack.setAttribute('height', 0.5);
         rack.setAttribute('depth', 0.6);
+        rack.setAttribute('material', 'visible:false');
         rack.setAttribute('color', '#4b5563');
         rack.setAttribute('static-body','');
         rack.setAttribute('shadow','receive:true');
@@ -812,6 +852,7 @@ AFRAME.registerComponent('ray-grab', {
         foul.setAttribute('width', this.data.laneWidth);
         foul.setAttribute('height', 0.005);
         foul.setAttribute('depth', 0.02);
+        foul.setAttribute('material', 'visible:false');
         foul.setAttribute('color', '#ef4444');
         foul.setAttribute('static-body','');
         scene.appendChild(foul);
@@ -840,14 +881,14 @@ AFRAME.registerComponent('ray-grab', {
         ];
         rows.flat().forEach((o)=>{
           const pin = document.createElement('a-cylinder');
+          const pModel = document.createElement('a-entity');
+          pin.setAttribute('dynamic-body','mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
           pin.setAttribute('class','pin grab-target');
           pin.setAttribute('radius', 0.06);
           pin.setAttribute('height', 0.45);
           pin.setAttribute('color', '#f5f5f4');
-          pin.setAttribute('position', `${base.x+o.x} ${base.y} ${base.z+o.z}`);
           pin.setAttribute('material','roughness:0.5; metalness:0.05; color:#f5f5f4');
-          pin.setAttribute('dynamic-body','mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
-          pin.setAttribute('shadow','cast:true; receive:true');
+          pin.setAttribute('position', `${base.x+o.x} ${base.y} ${base.z+o.z}`);
           pin.addEventListener('collide', (e)=>{
             const other = e.detail && e.detail.body && e.detail.body.el;
             if (!other) return;
@@ -857,6 +898,10 @@ AFRAME.registerComponent('ray-grab', {
               playAt(this.el.sceneEl,'sndPin',wp);
             }
           });
+          pModel.setAttribute('gltf-model', `Assets/3dModels/Pin.glb`);
+          pModel.setAttribute('position', '0 -.19 0');
+          pModel.setAttribute('shadow','cast:true; receive:true');
+          pin.appendChild(pModel);
           this.el.sceneEl.appendChild(pin);
           pin.dataset.pinIndex = String(this._pins.length + 1);
           this._pins.push(pin);
@@ -868,8 +913,18 @@ AFRAME.registerComponent('ray-grab', {
         const b = document.createElement('a-sphere');
         b.setAttribute('class','ball grab-target');
         b.setAttribute('radius', spec.radius);
-        b.setAttribute('color', spec.color);
-        b.setAttribute('material','roughness:0.35; metalness:0.1');
+        // b.setAttribute('color', spec.color);
+        b.setAttribute('material', 'src: url(Assets/Textures/bwg_Ball_${spec.color}.png); color: ${spec.color}; roughness:0.35; metalness:0.1'
+                                  /*'shader: overlay-double;' +
+                                  'baseColor: #999;' +
+                                  'overlay1: #img1;' +
+                                  'overlay2: #img2;' +
+                                  'overlay1Opacity: 0.8;' +
+                                  'overlay2Opacity: 1.0;' +
+                                  'overlay2Rotation: 0;' +
+                                  'overlay2Scale: 1 1;' +
+                                  'transparent: true'*/
+        );
         b.setAttribute('position','0 0.4 1.0'); // sur le rack
         b.setAttribute('shadow','cast:true; receive:true');
         b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
@@ -1136,7 +1191,7 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:false"
+    physics="gravity:-9.8;debug:true"
     bowling-game="difficulty: normal"
   >
     <a-assets>
@@ -1151,9 +1206,11 @@ AFRAME.registerComponent('ui-autobg', {
       <a-asset-item id="pinGLB" src="Bowling pins.glb"></a-asset-item> <!-- quilles, modèle pas fonctionnel pour le moment -->
     </a-assets>
 
+    <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body=""></a-entity>
+
     <!-- Lumières -->
     <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
-    <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0"></a-entity>
+    <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0" material="alphaHash: true"></a-entity>
 
     <!-- RIG + Caméra  -->
     <a-entity id="rig" position="0 1.6 2.8">

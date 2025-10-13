@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>VR Bowling — Prototype (One-File)</title>
+
+  <!-- A-Frame + extras + physics (pas de super-hands) -->
+  <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.2/dist/aframe-extras.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@c-frame/aframe-physics-system@4.1.0/dist/aframe-physics-system.min.js"></script>
+
+  <body>
+    <a-scene>
+        <a-assets>
+            <a-asset-item id="tree" src="Assets/3dModels/BowlingField.glb"></a-asset-item>
+        </a-assets>
+
+        <a-entity gltf-model="#tree"></a-entity>
+    </a-scene>
+</body>
+</html>
