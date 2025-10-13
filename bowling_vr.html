@@ -26,7 +26,7 @@
   </style>
 
   <script>
-    // ---------- Déplacements stick gauche (locomotion) ----------
+    // ---------- Déplacements stick gauche ----------
     AFRAME.registerComponent('left-stick-move', {
       schema:{rig:{type:'selector'}, speed:{default:2.1}, dead:{default:0.18}},
       init(){
@@ -55,7 +55,7 @@
       remove(){ this.el.removeEventListener('thumbstickmoved', this.onThumb); }
     });
 
-    // ---------- Rotation douce stick droit ----------
+    // ---------- Rotation stick droit ----------
     AFRAME.registerComponent('right-stick-smoothturn', {
       schema:{rig:{type:'selector'}, speedDeg:{default:140}, dead:{default:0.18}},
       init(){ this.x=0; this.el.addEventListener('thumbstickmoved', e=>{
@@ -68,7 +68,6 @@
     });
 
     // ---------- Ray-based grab (sans super-hands) ----------
-// ---------- Ray-based grab (pur mouvement bras, sans clamp ni assist) ----------
 AFRAME.registerComponent('ray-grab', {
   schema:{
     objects:{default:'.grab-target'},
@@ -80,7 +79,7 @@ AFRAME.registerComponent('ray-grab', {
     this.prevPos=new THREE.Vector3();
     this.tmp=new THREE.Vector3();
 
-    // Saisir / relâcher (événements standard + émulateur)
+    // Saisir / relâcher (casque + émulateur)
     const down = this._onDown.bind(this), up = this._onUp.bind(this);
     this.el.addEventListener('gripdown', down);
     this.el.addEventListener('gripup',   up);
@@ -122,20 +121,19 @@ AFRAME.registerComponent('ray-grab', {
 
     if(ent.body){
       // Vitesse = déplacement de la main / dt, multiplié par throwScale (aucun clamp/assist)
-      const dt = Math.max((scene.timeDelta||16.7)/1000, 0.001); // sécu anti 0
+      const dt = Math.max((scene.timeDelta||16.7)/1000, 0.001); // sécu pour ne pas diviser par 0
       const v = this.tmp.subVectors(this.lastPos, this.prevPos).divideScalar(dt).multiplyScalar(this.data.throwScale);
 
-      // Applique la vélocité telle quelle
+      // Applique la vélocité
       ent.body.velocity.set(v.x, v.y, v.z);
 
-      // Spin de roulement cohérent (facultatif mais naturel) : ω = (up × v_horiz) / r
+      // Spin  : ω = (up × v_horiz) / r
       const up = new THREE.Vector3(0,1,0);
-      const vh = new THREE.Vector3(v.x, 0, v.z); // on ne “roule” que sur l’horizontale
+      const vh = new THREE.Vector3(v.x, 0, v.z);
       const r  = ent.getAttribute('radius') || 0.12;
       const omega = new THREE.Vector3().copy(up).cross(vh).multiplyScalar(1/Math.max(r,0.001));
       ent.body.angularVelocity.set(omega.x, omega.y, omega.z);
 
-      // petit "whoosh" (optionnel)
       try{
         const wp = ent.object3D.getWorldPosition(new THREE.Vector3());
         playAt(scene,'sndThrow',wp);
@@ -157,14 +155,14 @@ AFRAME.registerComponent('ray-grab', {
       setTimeout(()=> s.remove(), 1200);
     }
 
-    // ---------- Cœur du jeu ----------
+    // ---------- Jeu ----------
     const DIFFS = {
       easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.70, wobble: 0.00 },
       normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.80, wobble: 0.03 },
       hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.95, wobble: 0.08 }
     };
     const BALLS = [
-      {name:'Légère',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
+      {name:'Legere',  radius:0.115, mass:3.0,  color:'#8bd3ff'},
       {name:'Standard',radius:0.122, mass:5.0,  color:'#8bff9f'},
       {name:'Lourde',  radius:0.128, mass:7.25, color:'#ff8bd1'}
     ];
@@ -189,7 +187,7 @@ AFRAME.registerComponent('ray-grab', {
         this._scoreboardInit();
         this._initMatch(this._defaultNames(this.data.playersCount));
 
-        // Hauteur VR : y=0 en VR, y=1.6 sur desktop
+        // Hauteur VR : 
         const scene = this.el.sceneEl;
         const rig = document.getElementById('rig');
         const baseZ = rig ? rig.getAttribute('position').z : 2.8;
@@ -204,10 +202,10 @@ AFRAME.registerComponent('ray-grab', {
             rig.setAttribute('position',{x:p.x,y:1.6,z:baseZ});
           });
         }
-        // --- Quick throw via bouton Y du contrôleur GAUCHE ---
+        // --- Test lancer pour test en non vr avec le bouton Y du contrôleur GAUCHE ---
         const leftCtl = document.getElementById('leftCtl');
         if (leftCtl){
-          this._onYDown = () => this._buttonThrowFrom(leftCtl, 6.8); // 6.8 = vitesse; ajuste si besoin
+          this._onYDown = () => this._buttonThrowFrom(leftCtl, 6.8); // 6.8 = vitesse;
           leftCtl.addEventListener('ybuttondown', this._onYDown);
         }
       },
@@ -243,10 +241,10 @@ AFRAME.registerComponent('ray-grab', {
         const pchips = document.querySelectorAll('.playerCount');
         const applyPlayers = (n)=>{
           this.data.playersCount = n;
-          // (ré)initialise J1..Jn et régénère la frame d'entraînement
+          // (ré)initialise J1..Jn
           this._initMatch(this._defaultNames(n));
           this.resetFrame(true); // quilles + boule + écrans
-          // feedback visuel
+          // visuel
           pchips.forEach(c=>c.classList.remove('active'));
           document.querySelector(`.playerCount[data-players="${n}"]`)?.classList.add('active');
           this._toast(`Match configuré pour ${n} joueur${n>1?'s':''}.`);
@@ -255,7 +253,7 @@ AFRAME.registerComponent('ray-grab', {
         pchips.forEach(ch=>{
           ch.addEventListener('click', ()=> applyPlayers(+ch.dataset.players));
         });
-        // état initial (surligne la puce correspondant à la valeur courante)
+        // surligne le joueur correspondant
         document.querySelector(`.playerCount[data-players="${this.data.playersCount}"]`)?.classList.add('active');
       },
       
@@ -279,7 +277,7 @@ AFRAME.registerComponent('ray-grab', {
       const b = this._ball;
       const scene = this.el.sceneEl;
 
-      // 2) direction = avant du contrôleur, aplatie au sol
+      // 2) direction = avant du contrôleur
       const o3d = ctrlEl.object3D;
       const q = new THREE.Quaternion(), pos = new THREE.Vector3();
       o3d.getWorldQuaternion(q);
@@ -289,12 +287,12 @@ AFRAME.registerComponent('ray-grab', {
       dir.y = 0; if (dir.lengthSq() < 1e-6) dir.set(0,0,-1);
       dir.normalize();
 
-      // départ: ~40 cm devant la main, posé bas
+      // départ:
       const start = pos.clone().add(dir.clone().multiplyScalar(0.4));
       start.y = 0.18;
       b.setAttribute('position', `${start.x} ${start.y} ${start.z}`);
 
-      // 3) applique la vélocité + spin de roulement quand le body est prêt
+      // 3) applique la vélocité
       const apply = ()=>{
         const v = dir.clone().multiplyScalar(speed);
         b.body.velocity.set(v.x, v.y, v.z);
@@ -316,7 +314,7 @@ AFRAME.registerComponent('ray-grab', {
 
 
 
-      // --- ÉCRAN: init du canvas + références ---
+      // --- ÉCRAN: canvas + références ---
       _scoreboardInit(){
         this._scoreCanvas = document.getElementById('scoreCanvas');
         this._sbPlane = document.getElementById('scoreboardPlane');
@@ -341,14 +339,14 @@ AFRAME.registerComponent('ray-grab', {
         ctx.fillStyle='#9bdcff'; ctx.font='bold 42px system-ui,Segoe UI,Roboto';
         ctx.fillText('VR BOWLING', 36, 64);
         ctx.fillStyle='#cbd5e1'; ctx.font='24px system-ui,Segoe UI,Roboto';
-        ctx.fillText(`Difficulté : ${this.data.difficulty}`, 36, 108);
+        ctx.fillText(`Difficulte : ${this.data.difficulty}`, 36, 108);
 
         // statut + score
         const scoreLine = `Lancers: ${this.throws}/2   •   Quilles tombées: ${this.downSet.size}   •   Score frame: ${this.scoreThisFrame}`;
         ctx.fillStyle='#a7f3d0'; ctx.font='28px system-ui,Segoe UI,Roboto';
         ctx.fillText(scoreLine, 36, 190);
 
-        // schéma 10 quilles (1 devant, 4 au fond)
+        // schéma des 10 quilles (1 devant, 2 au milieu-devant, 3 milieu-fond et 4 au fond)
         const fallen = new Set(Array.from(this.downSet).map(p => +p.dataset.pinIndex || 0));
         const layout = [
           [{x:0,y:0}],
@@ -357,9 +355,9 @@ AFRAME.registerComponent('ray-grab', {
           [{x:-3,y:3},{x:-1,y:3},{x:1,y:3},{x:3,y:3}]
         ].flat();
 
-        const cx = W - 260;   // position horizontale (plus à droite)
-        const cy = 280;       // position verticale (plus bas)
-        const S  = 42;        // espacement entre rangées (légèrement plus grand)
+        const cx = W - 260;   // position horizontale
+        const cy = 280;       // position verticale
+        const S  = 42;        // espacement entre rangées
         ctx.fillStyle='#cbd5e1'; ctx.font='22px system-ui,Segoe UI,Roboto';
         ctx.fillText('Quilles', cx - 36, cy - 110);
 
@@ -423,10 +421,20 @@ AFRAME.registerComponent('ray-grab', {
           ctx.fillText('SCORES', 36, 70);
 
           // grille (10 frames + total)
-          const N = Math.max(1, this.players?.length || 1);
-          const left = 260, top = 120, nameW = 220, cellW = 140, totalW = 180;
-          // on répartit l'espace vertical restant entre les N joueurs
-          const rowH = Math.floor((H - top - 120) / N);
+          const left   = 260;
+          const top    = 120;
+          const nameW  = 220;
+          const cellW  = 140;
+          const totalW = 180;
+
+          const MAX_ROWS = 4; //max 4 joueurs
+          const bottomGap = 24; // marge visuelle en bas
+          const rowH = Math.floor((H - top - bottomGap) / MAX_ROWS);
+
+          // Centrer verticalement si < 4 joueurs
+          const usedH  = this.players.length * rowH;
+          const padTop = top + Math.floor(((MAX_ROWS - this.players.length) * rowH) / 2);
+
 
 
           // en-têtes frame
@@ -435,12 +443,13 @@ AFRAME.registerComponent('ray-grab', {
 
           // lignes joueurs
           for(let p=0; p<this.players.length; p++){
-            const py = top + p*rowH;
+            const py = padTop + p*rowH;   // centre proprement entre 1 et 3 joueurs
+
             
-            // surlignage doux de la ligne du joueur courant
+            // surlignage de la ligne du joueur
             const rowBgW = nameW + 10*cellW + totalW;
             if (p === this.currP) {
-              ctx.fillStyle = 'rgba(34,211,238,0.07)'; // cyan très léger
+              ctx.fillStyle = 'rgba(34,211,238,0.07)'; // couleur : cyan
               ctx.fillRect(left, py, rowBgW, rowH-24);
             }
 
@@ -452,7 +461,7 @@ AFRAME.registerComponent('ray-grab', {
             for (let f = 0; f < 10; f++) {
               const x = left + nameW + f*cellW;
               const cellH = rowH - 24;
-              const headerH = 32;                   // barre bleue style Wii
+              const headerH = 32;                   // barre bleue
               const playTop = py + headerH;
               const playBottom = py + cellH;
               const fr = this.players[p].frames[f];
@@ -462,7 +471,7 @@ AFRAME.registerComponent('ray-grab', {
               ctx.lineWidth = 3;
               ctx.strokeRect(x, py, cellW, cellH);
 
-              // --- barre bleue + numéro ---
+              // barre bleue + numéro
               const grad = ctx.createLinearGradient(x, py, x, py+headerH);
               grad.addColorStop(0,'#1ea0ff');
               grad.addColorStop(1,'#1676d6');
@@ -488,7 +497,7 @@ AFRAME.registerComponent('ray-grab', {
               ctx.fillStyle = pgrad;
               ctx.fillRect(x+1.5, playTop+1.5, cellW-3, playBottom - playTop - 3);
 
-              // --- grille "Wii" médiane (OK) ---
+              // grille
               ctx.lineCap = 'butt';
               ctx.lineJoin = 'miter';
               ctx.miterLimit = 2;
@@ -498,26 +507,26 @@ AFRAME.registerComponent('ray-grab', {
               const baseLeft  = x + inset;
               const baseRight = x + cellW - inset;
               const midX  = x + Math.round(cellW / 2);
-              const topCap = playTop + 6;                                         // butée haute sous la barre
+              const topCap = playTop + 6;                                         // marge haute sous la barre
               const L = 16;                                                        // longueur petite branche
 
               ctx.strokeStyle = '#77a9c6';
               ctx.lineWidth = 2;
 
-              // 1) ligne horizontale médiane (de gauche à droite)
+              // 1) ligne horizontale (de gauche à droite)
               ctx.beginPath();
               ctx.moveTo(baseLeft,  midY);
               ctx.lineTo(baseRight, midY);
               ctx.stroke();
 
-              // 2) utilitaire : un "L" qui part du MILIEU vers le HAUT
+              // 2) le "L" pour séparer lancer 1 / lancer 2 et total
               function drawLUp(xp, dir = +1){
                 // verticale (milieu -> haut)
                 ctx.beginPath();
                 ctx.moveTo(xp, midY);
                 ctx.lineTo(xp, topCap);
                 ctx.stroke();
-                // petite branche horizontale au niveau du milieu
+                // branche horizontale au milieu
                 ctx.beginPath();
                 ctx.moveTo(xp, midY);
                 ctx.lineTo(xp + dir*L, midY); // dir=+1 → droite, dir=-1 → gauche
@@ -539,7 +548,7 @@ AFRAME.registerComponent('ray-grab', {
                   (r2 == null ? '' : String(r2))
                 );
 
-                const markY   = py + headerH + 25;      // juste sous la barre bleue
+                const markY   = py + headerH + 25; // juste sous la barre bleue
                 const centerL = (baseLeft + midX) / 2; // centre demi-case gauche
                 const centerR = (midX + baseRight) / 2;// centre demi-case droite
 
@@ -553,7 +562,7 @@ AFRAME.registerComponent('ray-grab', {
                 ctx.restore();
               }
             } else {
-              // 10e : 3 sous-zones (2 séparateurs)
+              // 10e lancer : 3 sous-zones (donc 2 séparateurs)
               const third = cellW / 3;
               const s1 = x + Math.round(third);
               const s2 = x + Math.round(2 * third);
@@ -599,7 +608,7 @@ AFRAME.registerComponent('ray-grab', {
 
 
 
-              // --- score cumulé en BAS, CENTRÉ dans la case ---
+              //score cumulé en BAS, centré
               const started = fr.rolls && fr.rolls.some(v => v != null);
               if (started && fr.cum != null){
                 ctx.save();
@@ -609,7 +618,7 @@ AFRAME.registerComponent('ray-grab', {
                 ctx.textBaseline = 'bottom';
 
                 const cumX = x + cellW / 2;  // centre horizontal de la case
-                const cumY = playBottom - 25; // 6 px au-dessus du bas de la case
+                const cumY = playBottom - 25; // x px au-dessus du bas de la case
                 ctx.fillText(String(fr.cum), cumX, cumY);
 
                 ctx.restore();
@@ -618,7 +627,6 @@ AFRAME.registerComponent('ray-grab', {
 
 
             // total final
-            // total final = dernier cumulé d'une frame réellement commencée (sinon vide)
             let tot = null;
             for (let ff = 9; ff >= 0; ff--){
               const fr2 = this.players[p].frames[ff];
@@ -627,7 +635,7 @@ AFRAME.registerComponent('ray-grab', {
             }
 
             const tx  = left + nameW + 10*cellW;
-            // nettoie/opaque la cellule Total
+            // nettoie la cellule Total
             ctx.fillStyle = 'rgba(11,17,24,0.92)';
             ctx.fillRect(tx+1, py+1, totalW-2, rowH-26);
             ctx.strokeStyle='#334155'; ctx.lineWidth=3; ctx.strokeRect(tx, py, totalW, rowH-24);
@@ -640,7 +648,7 @@ AFRAME.registerComponent('ray-grab', {
 
           }
 
-          // highlight du joueur/frame en cours
+          // highlight du joueur en cours
           try{
             const x = left + nameW + this.currF*cellW;
             const y = top + this.currP*rowH;
@@ -657,7 +665,7 @@ AFRAME.registerComponent('ray-grab', {
           }catch(e){}
         },
 
-        // -- Calcul des scores (règles bowling) --
+        // Calcul des scores
         _computeScores(){
           for (const p of this.players){
             // aplanir les lancers
@@ -666,7 +674,7 @@ AFRAME.registerComponent('ray-grab', {
               const r=p.frames[f].rolls;
               if (r[0]===10) { rolls.push(10); } else { rolls.push(r[0]||0, r[1]||0); }
             }
-            // 10e frame (0..3 lancers)
+            // 10e round (0..3 lancers)
             const r10=p.frames[9].rolls; for (const v of r10) if (v!=null) rolls.push(v);
 
             // score frame par frame
@@ -699,7 +707,7 @@ AFRAME.registerComponent('ray-grab', {
           this._renderMainBoard();
         },
 
-        // -- Enregistrer un lancer terminé (nb de quilles tombées) --
+        // Enregistrer un lancer terminé (nombre de quilles tombées)
         _registerThrow(pins){
           const P=this.players[this.currP], F=P.frames[this.currF];
           // bornes en cas d’artefact
@@ -735,7 +743,7 @@ AFRAME.registerComponent('ray-grab', {
           this._computeScores();
         },
 
-        // -- Avancer au prochain joueur / frame, puis redessiner --
+        // Avancer au prochain joueur / frame, puis redessiner
         _advanceTurn(resetPins){
           // joueur suivant
           if (this.currP < this.players.length-1){ this.currP++; }
@@ -816,7 +824,7 @@ AFRAME.registerComponent('ray-grab', {
         this._leftWall.setAttribute('position',  `${-(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
         this._rightWall.setAttribute('position', `${+(half+0.1)} 0.2 ${-this.data.laneLength/2}`);
         this._ballDamp = {lin: d.ballDampLin, ang: d.ballDampAng, wobble: d.wobble};
-        this._setStatus(`Difficulté: ${this.data.difficulty}`);
+        this._setStatus(`Difficulte: ${this.data.difficulty}`);
       },
 
       // -------- Pins & Boule --------
@@ -879,18 +887,18 @@ AFRAME.registerComponent('ray-grab', {
         if (announce) this._toast(`Boule "${spec.name}" disponible`);
       },
 
-      // -------- Cycle d’un frame (2 lancers) --------
+      // Cycle d’un frame (2 lancers)
       resetFrame(hard=false){
         this.throws=0; this.scoreThisFrame=0; this.downSet.clear(); this.inPlay=false;
         if (hard){ this._toast('Réinitialisation complète.'); }
         this.spawnPins();
         this.spawnBall(1);
-        this._setStatus(`Difficulté: ${this.data.difficulty} — Mode entraînement (1 frame)`);
+        this._setStatus(`Difficulte: ${this.data.difficulty} — Mode entraînement (1 frame)`);
         this._setScore();
       },
 
       tick(t,dt){
-        // détecte quille tombée via inclinaison (dot<0.75) ou si elle tombe du monde
+        // détecte quille tombée par inclinaison (dot<0.75)
         const THRESH = 0.75;
         this._pins.forEach(pin=>{
           if (this.downSet.has(pin)) return;
@@ -964,30 +972,124 @@ AFRAME.registerComponent('ray-grab', {
       }
     });
 
-    // Bouton VR : envoie une action au jeu quand on clique au laser
+    // Bouton VR : envoie une action quand on clique au laser
     AFRAME.registerComponent('vrbtn', {
-      schema: { action:{default:''}, value:{default:''} },
-      init(){
-        const hoverIn  = () => this.el.setAttribute('material','color:#0ea5e9; opacity:0.95');
-        const hoverOut = () => this.el.setAttribute('material','color:#1f2937; opacity:0.9');
-        this.onClick = () => {
-          const game = this.el.sceneEl.components['bowling-game']; if(!game) return;
-          const v = this.data.value;
-          switch (this.data.action) {
-            case 'diff': game.data.difficulty = v; game._applyDifficulty(); game._toast(`Difficulté: ${v}`); break;
-            case 'ball': game.spawnBall(parseInt(v,10), true); break;
-            case 'players': game._initMatch(game._defaultNames(parseInt(v,10))); game.resetFrame(true); break;
-            case 'reset': game.resetFrame(true); break;
-          }
-        };
-        this.el.classList.add('ui-hit');
-        this.el.addEventListener('mouseenter', hoverIn);
-        this.el.addEventListener('mouseleave', hoverOut);
-        this.el.addEventListener('click', this.onClick);
-        hoverOut();
-      },
-      remove(){ this.el.removeEventListener('click', this.onClick); }
+  schema: { action:{default:''}, value:{default:''} },
+  init(){
+    const BASE  = 'color:#1f2937; opacity:0.92; transparent:true; depthTest:false';
+    const HOVER = 'color:#0ea5e9;  opacity:0.95; transparent:true; depthTest:false';
+
+    const hoverIn  = () => this.el.setAttribute('material', HOVER);
+    const hoverOut = () => this.el.setAttribute('material', BASE);
+
+    this.onClick = () => {
+      const game = this.el.sceneEl.components['bowling-game']; if(!game) return;
+      const v = this.data.value;
+      switch (this.data.action) {
+        case 'diff':    game.data.difficulty = v; game._applyDifficulty(); game._toast(`Difficulte: ${v}`); break;
+        case 'ball':    game.spawnBall(parseInt(v,10), true); break;
+        case 'players': game._initMatch(game._defaultNames(parseInt(v,10))); game.resetFrame(true); break;
+        case 'reset':   game.resetFrame(true); break;
+      }
+    };
+
+    this.el.classList.add('ui-hit');
+    // matériau de base
+    this.el.setAttribute('material', BASE);
+
+    this.el.addEventListener('mouseenter', hoverIn);
+    this.el.addEventListener('mouseleave', hoverOut);
+    this.el.addEventListener('click', this.onClick);
+  },
+  remove(){ this.el.removeEventListener('click', this.onClick); }
 });
+
+
+
+
+
+
+// ---- UI: fond auto qui s'ajuste au contenu ----
+AFRAME.registerComponent('ui-autobg', {
+  schema:{
+    target: {type:'selector', default:''}, // contenu à mesurer
+    padding:{default:'0.20 0.16'}, // marges (x y) autour du contenu
+    color:  {default:'#0b1118'},
+    opacity:{default:0.92},
+    z:      {default:-0.01}, // fond derrière
+    side:   {default:'double'},
+    offsetX: {default:0}, // décalage (gauche-droite)
+    offsetY: {default:0} // décalage local du fond (haut-bas)
+  },
+  init(){
+    // crée le fond (plane) comme 1er enfant
+    this.bg = document.createElement('a-plane');
+    this.bg.setAttribute('material', `color:${this.data.color}; opacity:${this.data.opacity}; transparent:true; side:${this.data.side}; depthTest:true`);
+    this.el.insertBefore(this.bg, this.el.firstChild);
+
+    this._refresh = this._refresh.bind(this);
+
+    // re-mesure quand le contenu bouge ou change
+    this.el.addEventListener('child-attached', this._refresh);
+    this.el.addEventListener('child-detached', this._refresh);
+    this.el.addEventListener('componentchanged', ev=>{
+      if (ev.detail && ev.detail.name==='text') this._refresh();
+    });
+
+    // premier calage (+ recalcule 2–3 fois pour attendre les géométries de texte)
+    setTimeout(this._refresh, 0);
+    setTimeout(this._refresh, 60);
+    setTimeout(this._refresh, 180);
+  },
+  remove(){
+    this.el.removeEventListener('child-attached', this._refresh);
+    this.el.removeEventListener('child-detached', this._refresh);
+  },
+  _refresh(){
+    const root = this.data.target || this.el;
+    if (!root || !root.object3D) return;
+
+    root.object3D.updateMatrixWorld(true);
+    const box = new THREE.Box3().makeEmpty();
+    const tmp = new THREE.Box3();
+
+    // union des bounding boxes de tous les Mesh du contenu (hors bg)
+    root.object3D.traverse(o=>{
+      if (!o.visible || !o.isMesh) return;
+      if (o.el && o.el === this.bg) return;
+      const geo = o.geometry; if (!geo) return;
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      tmp.copy(geo.boundingBox).applyMatrix4(o.matrixWorld);
+      box.union(tmp);
+    });
+
+    if (box.isEmpty()) return;
+
+    // taille/centre en LOCAL du conteneur
+    const sizeW = new THREE.Vector3(); box.getSize(sizeW);
+    const centerW = new THREE.Vector3(); box.getCenter(centerW);
+
+    const inv = new THREE.Matrix4().copy(this.el.object3D.matrixWorld).invert();
+    centerW.applyMatrix4(inv);
+
+    const ws = new THREE.Vector3(); this.el.object3D.getWorldScale(ws);
+    const w = sizeW.x / (ws.x||1);
+    const h = sizeW.y / (ws.y||1);
+
+    const pad = this.data.padding.trim().split(/\s+/).map(parseFloat);
+    const padX = pad[0] ?? 0.2, padY = pad[1] ?? pad[0] ?? 0.16;
+
+    this.bg.setAttribute('width',  (w + padX*2).toFixed(3));
+    this.bg.setAttribute('height', (h + padY*2).toFixed(3));
+
+    centerW.x += this.data.offsetX;
+    centerW.y += this.data.offsetY;
+
+    this.bg.setAttribute('position', `${centerW.x.toFixed(3)} ${centerW.y.toFixed(3)} ${this.data.z}`);
+  }
+});
+
+
 
   </script>
 </head>
@@ -1003,7 +1105,7 @@ AFRAME.registerComponent('ray-grab', {
 
   <div class="panel" role="group" aria-label="Paramètres Bowling">
     <h3>VR Bowling — Réglages</h3>
-    <div style="margin-bottom:6px">Difficulté :</div>
+    <div style="margin-bottom:6px">Difficulte :</div>
     <div class="row" style="margin-bottom:10px">
       <div class="chip" data-diff="easy">Facile</div>
       <div class="chip" data-diff="normal">Normal</div>
@@ -1011,7 +1113,7 @@ AFRAME.registerComponent('ray-grab', {
     </div>
     <div style="margin-bottom:6px">Boules :</div>
     <div class="row" style="margin-bottom:10px">
-      <button data-ball="0">Légère</button>
+      <button data-ball="0">Legere</button>
       <button data-ball="1">Standard</button>
       <button data-ball="2">Lourde</button>
       <button id="resetAll" style="margin-left:auto;background:#374151">Réinit. piste</button>
@@ -1038,20 +1140,22 @@ AFRAME.registerComponent('ray-grab', {
     bowling-game="difficulty: normal"
   >
     <a-assets>
-      <!-- petits sons placeholders (remplace par tes .ogg/.wav si tu veux) -->
+      <!-- sons placeholders -->
       <audio id="sndThrow"  src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndPin"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndStrike" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <audio id="sndEnd"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
       <canvas id="scoreCanvas" width="1024" height="512"></canvas>
       <canvas id="scoreMain" width="2048" height="1024"></canvas>
+
+      <a-asset-item id="pinGLB" src="Bowling pins.glb"></a-asset-item> <!-- quilles, modèle pas fonctionnel pour le moment -->
     </a-assets>
 
     <!-- Lumières -->
     <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
     <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0"></a-entity>
 
-    <!-- RIG + Caméra : y=1.6 (desktop), y=0 auto en VR -->
+    <!-- RIG + Caméra  -->
     <a-entity id="rig" position="0 1.6 2.8">
       <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
 
@@ -1081,7 +1185,7 @@ AFRAME.registerComponent('ray-grab', {
     </a-entity>
 
 
-    <!-- Structure plafond + moniteurs (clean pitch/yaw) -->
+    <!-- Structure plafond + écrans -->
   <a-entity id="overheadRig" position="0 5.6 -3.0" rotation="0 0 0">
     <!-- Barre -->
     <a-box position="0 0 -0.2" width="6.2" height="0.08" depth="0.12" color="#1c2430"></a-box>
@@ -1111,71 +1215,59 @@ AFRAME.registerComponent('ray-grab', {
 
 
 
-
         <!-- Panneau de réglages VR -->
-        <a-entity id="vrMenu" position="-2.1 1.35 -0.6" rotation="0 20 0" scale="1.9 1.9 1">
-          <!-- Fond unique -->
-          <a-plane id="vrMenuBg"
-            position="-0.35 0 0.01"
-            width="2.35" height="1.25"
-            color="#0b1118"
-            material="opacity:0.92; side:double">
-          </a-plane>
+        <a-entity id="vrMenu" position="-3.75 1.35 -1.05" rotation="0 35 0" scale="2 2 1"
+                    ui-autobg="target:#vrMenuContent; padding:0.8 0.4; opacity:0.92; z:-0.01; offsetX:-0.45; offsetY:0.1">
+
+          <a-entity id="vrMenuContent">
+            <!-- Titre -->
+            <a-entity position="-0.20 0.60 0.03"
+                      text="value:Reglages :; color:#9bdcff; width:3.6; align:left; zOffset:0.02"></a-entity>
+
+            <!-- Libellés + boutons-->
+            <a-entity position="-0.20 0.36 0.03"
+                      text="value:Difficulte :; color:#cbd5e1; width:2.6; align:left; zOffset:0.02"></a-entity>
+
+            <a-plane position="-0.60 0.36 0.02" width="0.38" height="0.12" vrbtn="action:diff; value:easy"></a-plane>
+            <a-entity position="-0.60 0.36 0.03" text="value:Facile; align:center; width:2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.00 0.36 0.02" width="0.42" height="0.12" vrbtn="action:diff; value:normal"></a-plane>
+            <a-entity position="0.00 0.36 0.03" text="value:Normal; align:center; width:2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.66 0.36 0.02" width="0.48" height="0.12" vrbtn="action:diff; value:hard"></a-plane>
+            <a-entity position="0.66 0.36 0.03" text="value:Difficile; align:center; width:2; zOffset:0.02"></a-entity>
+
+            <a-entity position="-0.20 0.04 0.03"
+                      text="value:Boules :; color:#cbd5e1; width:2.6; align:left; zOffset:0.02"></a-entity>
+
+            <a-plane position="-0.80 0.04 0.02" width="0.42" height="0.12" vrbtn="action:ball; value:0"></a-plane>
+            <a-entity position="-0.80 0.04 0.03" text="value:Legere; align:center; width:2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.00 0.04 0.02" width="0.54" height="0.12" vrbtn="action:ball; value:1"></a-plane>
+            <a-entity position="0.00 0.04 0.03" text="value:Standard; align:center; width:2.2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.86 0.04 0.02" width="0.50" height="0.12" vrbtn="action:ball; value:2"></a-plane>
+            <a-entity position="0.86 0.04 0.03" text="value:Lourde; align:center; width:2; zOffset:0.02"></a-entity>
+
+            <a-entity position="-0.20 -0.30 0.03"
+                      text="value:Joueurs :; color:#cbd5e1; width:2.6; align:left; zOffset:0.02"></a-entity>
+
+            <a-plane position="-0.60 -0.30 0.02" width="0.22" height="0.12" vrbtn="action:players; value:1"></a-plane>
+            <a-entity position="-0.60 -0.30 0.03" text="value:1; align:center; width:1.2; zOffset:0.02"></a-entity>
+
+            <a-plane position="-0.20 -0.30 0.02" width="0.22" height="0.12" vrbtn="action:players; value:2"></a-plane>
+            <a-entity position="-0.20 -0.30 0.03" text="value:2; align:center; width:1.2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.20 -0.30 0.02" width="0.22" height="0.12" vrbtn="action:players; value:3"></a-plane>
+            <a-entity position="0.20 -0.30 0.03" text="value:3; align:center; width:1.2; zOffset:0.02"></a-entity>
+
+            <a-plane position="0.60 -0.30 0.02" width="0.22" height="0.12" vrbtn="action:players; value:4"></a-plane>
+            <a-entity position="0.60 -0.30 0.03" text="value:4; align:center; width:1.2; zOffset:0.02"></a-entity>
+      </a-entity>
+  </a-entity>
 
 
-          <!-- Titre (même Z pour tout: 0.02 ou 0.03) -->
-          <a-entity position="-0.68 0.43 0.02"
-                    text="value:Reglages VR; color:#9bdcff; width:2.6; align:left"></a-entity>
-
-          <!-- Libellé Difficulté -->
-          <a-entity position="-0.68 0.29 0.02"
-                    text="value:Difficulté; color:#cbd5e1; width:2.2; align:left"></a-entity>
-          <!-- Boutons difficulté -->
-          <a-plane position="-0.46 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:easy"></a-plane>
-          <a-entity position="-0.46 0.18 0.03" text="value:Facile; align:center; width:1.8"></a-entity>
-
-          <a-plane position="-0.10 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:normal"></a-plane>
-          <a-entity position="-0.10 0.18 0.03" text="value:Normal; align:center; width:1.8"></a-entity>
-
-          <a-plane position="0.26 0.18 0.02" width="0.30" height="0.11" vrbtn="action:diff; value:hard"></a-plane>
-          <a-entity position="0.26 0.18 0.03" text="value:Difficile; align:center; width:1.8"></a-entity>
-
-          <!-- Libellé Boules -->
-          <a-entity position="-0.68 0.04 0.02"
-                    text="value:Boules; color:#cbd5e1; width:2.2; align:left"></a-entity>
-          <!-- Boutons boules -->
-          <a-plane position="-0.46 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:0"></a-plane>
-          <a-entity position="-0.46 -0.07 0.03" text="value:Légère; align:center; width:1.8"></a-entity>
-
-          <a-plane position="-0.10 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:1"></a-plane>
-          <a-entity position="-0.10 -0.07 0.03" text="value:Standard; align:center; width:1.8"></a-entity>
-
-          <a-plane position="0.26 -0.07 0.02" width="0.30" height="0.11" vrbtn="action:ball; value:2"></a-plane>
-          <a-entity position="0.26 -0.07 0.03" text="value:Lourde; align:center; width:1.8"></a-entity>
-
-          <!-- Libellé Joueurs -->
-          <a-entity position="-0.68 -0.21 0.02"
-                    text="value:Joueurs; color:#cbd5e1; width:2.2; align:left"></a-entity>
-          <!-- Boutons joueurs -->
-          <a-plane position="-0.46 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:1"></a-plane>
-          <a-entity position="-0.46 -0.32 0.03" text="value:1; align:center; width:1.4"></a-entity>
-
-          <a-plane position="-0.22 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:2"></a-plane>
-          <a-entity position="-0.22 -0.32 0.03" text="value:2; align:center; width:1.4"></a-entity>
-
-          <a-plane position="0.02 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:3"></a-plane>
-          <a-entity position="0.02 -0.32 0.03" text="value:3; align:center; width:1.4"></a-entity>
-
-          <a-plane position="0.26 -0.32 0.02" width="0.14" height="0.11" vrbtn="action:players; value:4"></a-plane>
-          <a-entity position="0.26 -0.32 0.03" text="value:4; align:center; width:1.4"></a-entity>
-
-          <!-- Réinitialisation -->
-          <a-plane position="0.52 -0.32 0.02" width="0.32" height="0.11" vrbtn="action:reset; value:1"></a-plane>
-          <a-entity position="0.52 -0.32 0.03" text="value:Réinit.; align:center; width:1.8"></a-entity>
-        </a-entity>
-
-
-    <!-- Fond -->
+    <!-- Fond map : Ciel -->
     <a-sky color="#0b0f14"></a-sky>
   </a-scene>
 </body>
