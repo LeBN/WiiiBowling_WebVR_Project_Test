@@ -27,7 +27,7 @@
   
   <script>
     // ---------- Son et musiques ----------
-    window.addEventListener('load', () => {
+    window.addEventListener('enter-vr', () => {
       const loopSound = document.querySelector('#sndLoop');
       
       loopSound.addEventListener('loadeddata', () => {
@@ -84,7 +84,7 @@
 AFRAME.registerComponent('ray-grab', {
   schema:{
     objects:{default:'.grab-target'},
-    throwScale:{type: "vec3", default: {x: 3, y:3, z: 7}} // ajuste si tu veux plus/moins de puissance globale
+    throwScale:{type: "vec3", default: {x: 3, y:3, z: 5}} // ajuste si tu veux plus/moins de puissance globale
   },
   init(){
     this.grabbed=null;
@@ -1220,7 +1220,7 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:true"
+    physics="gravity:-9.8;debug:false"
     bowling-game="difficulty: normal"
   >
     <a-assets>
