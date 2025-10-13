@@ -26,6 +26,19 @@
   </style>
   
   <script>
+    // ---------- Son et musiques ----------
+    window.addEventListener('load', () => {
+      const loopSound = document.querySelector('#sndLoop');
+      
+      loopSound.addEventListener('loadeddata', () => {
+        const scene = document.querySelector('a-scene');
+        
+        const ambient = document.createElement('a-entity');
+        ambient.setAttribute('sound', 'src:#sndLoop; loop:true; positional:false; volume:0.4; autoplay:true');
+        scene.appendChild(ambient);
+      });
+    });
+
     // ---------- Déplacements stick gauche ----------
     AFRAME.registerComponent('left-stick-move', {
       schema:{rig:{type:'selector'}, speed:{default:2.1}, dead:{default:0.18}},
@@ -71,7 +84,7 @@
 AFRAME.registerComponent('ray-grab', {
   schema:{
     objects:{default:'.grab-target'},
-    throwScale:{default:3} // ajuste si tu veux plus/moins de puissance globale
+    throwScale:{type: "vec3", default: {x: 3, y:3, z: 7}} // ajuste si tu veux plus/moins de puissance globale
   },
   init(){
     this.grabbed=null;
@@ -122,7 +135,7 @@ AFRAME.registerComponent('ray-grab', {
     if(ent.body){
       // Vitesse = déplacement de la main / dt, multiplié par throwScale (aucun clamp/assist)
       const dt = Math.max((scene.timeDelta||16.7)/1000, 0.001); // sécu pour ne pas diviser par 0
-      const v = this.tmp.subVectors(this.lastPos, this.prevPos).divideScalar(dt).multiplyScalar(this.data.throwScale);
+      const v = this.tmp.subVectors(this.lastPos, this.prevPos).divideScalar(dt).multiply(this.data.throwScale);
 
       // Applique la vélocité
       ent.body.velocity.set(v.x, v.y, v.z);
@@ -157,23 +170,23 @@ AFRAME.registerComponent('ray-grab', {
 
     // ---------- Jeu ----------
     const DIFFS = {
-      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 0.503, wobble: 0.00 },
-      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 0.74, wobble: 0.03 },
-      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 0.9, wobble: 0.08 }
+      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 1, wobble: 0.00 },
+      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 1.5, wobble: 0.03 },
+      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 1.8, wobble: 0.08 }
     };
     const BALLS = [
-      {name:'Légère',  radius:0.115, mass:3.0,  color:'blue'}, // #479aa5
-      {name:'Standard',radius:0.122, mass:5.0,  color:'green'}, // #32CD32
-      {name:'Lourde',  radius:0.128, mass:7.25, color:'pink'} // #f79ac5
+      {name:'Légère',  radius:0.15, mass:3.0,  color:'blue'}, // #479aa5
+      {name:'Standard',radius:0.22, mass:5.0,  color:'green'}, // #32CD32
+      {name:'Lourde',  radius:0.28, mass:7.25, color:'pink'} // #f79ac5
     ];
 
     AFRAME.registerComponent('bowling-game', {
       schema:{
         difficulty:{default:'normal'},
-        laneLength:{default:19.225},
-        laneWidth:{default:1.06},
+        laneLength:{default:38.45},
+        laneWidth:{default:2.12},
         foulZ:{default:0.0},
-        pinZ:{default:-12.0},
+        pinZ:{default:-36.6},
         playersCount:{default:4}
       },
       init(){
@@ -764,7 +777,7 @@ AFRAME.registerComponent('ray-grab', {
 
         // Sol
         const ground = document.createElement('a-plane');
-        ground.setAttribute('position','0 0 2.5');
+        ground.setAttribute('position','0 -.2 2.5');
         ground.setAttribute('rotation','-90 0 0');
         ground.setAttribute('width', 40);
         ground.setAttribute('height', 5);
@@ -780,20 +793,21 @@ AFRAME.registerComponent('ray-grab', {
           document.createElement('a-box'), // avant-droit
           document.createElement('a-box'), // avant-gauche
           document.createElement('a-box'), // gauche
-          document.createElement('a-box')  // droite
+          document.createElement('a-box'), // droite
+          document.createElement('a-box')  // dessous
         ]
         bounds[0].setAttribute('position', `0 2 5`);
         bounds[0].setAttribute('width', 40);
         bounds[0].setAttribute('height', 5);
         bounds[0].setAttribute('depth', .85);
-        bounds[1].setAttribute('position', `11 2 -10`);
-        bounds[1].setAttribute('width', 20);
-        bounds[1].setAttribute('height', 5);
-        bounds[1].setAttribute('depth', 20);
-        bounds[2].setAttribute('position', `-11 2 -10`);
-        bounds[2].setAttribute('width', 20);
-        bounds[2].setAttribute('height', 5);
-        bounds[2].setAttribute('depth', 20);
+        bounds[1].setAttribute('position', `11 -.5 -19`);
+        bounds[1].setAttribute('width', 19);
+        bounds[1].setAttribute('height', 1);
+        bounds[1].setAttribute('depth', 38);
+        bounds[2].setAttribute('position', `-11 -.5 -19`);
+        bounds[2].setAttribute('width', 19);
+        bounds[2].setAttribute('height', 1);
+        bounds[2].setAttribute('depth', 38);
         bounds[3].setAttribute('position', `20 2 2.5`);
         bounds[3].setAttribute('rotation', '0 90 0');
         bounds[3].setAttribute('width', 5);
@@ -804,6 +818,11 @@ AFRAME.registerComponent('ray-grab', {
         bounds[4].setAttribute('width', 5);
         bounds[4].setAttribute('height', 5);
         bounds[4].setAttribute('depth', 1);
+        bounds[5].setAttribute('position', `0 -.9 -22.5`);
+        bounds[5].setAttribute('rotation', '90 0 0');
+        bounds[5].setAttribute('width', 40);
+        bounds[5].setAttribute('height', 40);
+        bounds[5].setAttribute('depth', 1);
         bounds.forEach(b=>{
           b.setAttribute('material', 'visible: false');
           b.setAttribute('static-body','');
@@ -872,7 +891,7 @@ AFRAME.registerComponent('ray-grab', {
       spawnPins(){
         this._pins.forEach(p=>p.remove()); this._pins.length=0;
         const base = new THREE.Vector3(0, 0.225, this.data.pinZ);
-        const dx = 0.18, dz = -0.32; // espacements
+        const dx = 0.6, dz = -0.525; // espacements
         const rows = [
           [{x:0,        z:0}],
           [{x:-dx/2,   z:dz},       {x:+dx/2, z:dz}],
@@ -884,12 +903,12 @@ AFRAME.registerComponent('ray-grab', {
           const pModel = document.createElement('a-entity');
           
           // Géométrie + physique sur le parent (invisible)
-          pin.setAttribute('geometry', 'primitive: cylinder; radius: 0.06; height: 0.45');
-          pin.setAttribute('material', 'transparent: true; opacity: 0');  // collider invisible
+          pin.setAttribute('geometry', 'primitive: cylinder; radius: 0.13; height: 0.75');
+          pin.setAttribute('material', 'transparent: true; opacity: 0');
           pin.setAttribute('dynamic-body', 'mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
 
           // Compat: on conserve un attribut radius pour le code qui lit ent.getAttribute('radius')
-          pin.setAttribute('radius', 0.06);
+          pin.setAttribute('radius', 0.12);
 
           pin.setAttribute('class','pin grab-target');
           pin.setAttribute('position', `${base.x+o.x} ${base.y} ${base.z+o.z}`);
@@ -906,7 +925,8 @@ AFRAME.registerComponent('ray-grab', {
 
           // Enfant visuel : le modèle glTF uniquement (affiché)
           pModel.setAttribute('gltf-model', `Assets/3dModels/Pin.glb`);
-          pModel.setAttribute('position', '0 -.19 0');               // ajuste si besoin
+          pModel.setAttribute('position', '0 -.37 0');
+          pModel.setAttribute('scale', '2 2 2');
           pModel.setAttribute('shadow','cast:true; receive:true');
 
           pin.appendChild(pModel);
@@ -1200,15 +1220,16 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:false"
+    physics="gravity:-9.8;debug:true"
     bowling-game="difficulty: normal"
   >
     <a-assets>
       <!-- sons placeholders -->
-      <audio id="sndThrow"  src="Assets\Sounds\Bowling\Sample_0017.wav"></audio>
+      <audio id="sndThrow"  src=""></audio>
       <audio id="sndPin"    src="Assets\Sounds\Bowling\Sample_0013.wav"></audio>
       <audio id="sndStrike" src="Assets\Sounds\Voices\CrowdSlowClap.wav"></audio>
       <audio id="sndEnd"    src="Assets\Sounds\Bowling\Sample_0031.wav"></audio>
+      <audio id="sndLoop"   src="Assets\Sounds\Musics\39 Bowling (Training).mp3"></audio>
       <canvas id="scoreCanvas" width="1024" height="512"></canvas>
       <canvas id="scoreMain" width="2048" height="1024"></canvas>
 
@@ -1219,8 +1240,8 @@ AFRAME.registerComponent('ui-autobg', {
     <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body="" scale="2 2 2"></a-entity>
 
     <!-- Lumières -->
-    <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
-    <a-entity light="type:directional; intensity:1; castShadow:true" position="2 6 3" rotation="-45 30 0" material="alphaHash: true"></a-entity>
+    <a-entity light="type:ambient; intensity:1; color:#ffffff"></a-entity>
+    <a-entity light="type:directional; intensity:1.2;  castShadow:true" position="2 6 3" rotation="-45 30 0" material="alphaHash: true"></a-entity>
 
     <!-- RIG + Caméra  -->
     <a-entity id="rig" position="0 1.6 2.8">
@@ -1262,7 +1283,7 @@ AFRAME.registerComponent('ui-autobg', {
     <a-box position=" 2.9 -0.45 -0.2" width="0.06" height="0.90" depth="0.06" color="#1c2430"></a-box>
 
     <!-- Écran gauche -->
-  <a-entity position="-3.2 -2.60 0" rotation="8 3 0" scale="2 2 1">
+  <a-entity position="-3.2 -2.60 0" rotation="8 3 0" scale="1.5 1.5 .7">
     <a-plane id="mainBoardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreMain; side:double; transparent:true"></a-plane>
@@ -1270,7 +1291,7 @@ AFRAME.registerComponent('ui-autobg', {
   </a-entity>
 
   <!-- Écran droit -->
-  <a-entity position=" 3.2 -2.60 0" rotation="8 -3 0" scale="2 2 1">
+  <a-entity position=" 3.2 -2.60 0" rotation="8 -3 0" scale="1.5 1.5 .7">
     <a-plane id="scoreboardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreCanvas; side:double; transparent:true"></a-plane>
@@ -1335,7 +1356,7 @@ AFRAME.registerComponent('ui-autobg', {
 
 
     <!-- Fond map : Ciel -->
-    <a-sky color="#0b0f14"></a-sky>
+    <a-sky color="#ffffff"></a-sky>
   </a-scene>
 </body>
 </html>
