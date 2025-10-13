@@ -1215,7 +1215,7 @@ AFRAME.registerComponent('ui-autobg', {
       <a-asset-item id="pinGLB" src="Bowling pins.glb"></a-asset-item> <!-- quilles, modèle pas fonctionnel pour le moment -->
     </a-assets>
 
-    <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body=""></a-entity>
+    <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body="" scale="2 2 2"></a-entity>
 
     <!-- Lumières -->
     <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
@@ -1261,7 +1261,7 @@ AFRAME.registerComponent('ui-autobg', {
     <a-box position=" 2.9 -0.45 -0.2" width="0.06" height="0.90" depth="0.06" color="#1c2430"></a-box>
 
     <!-- Écran gauche -->
-  <a-entity position="-2.2 -2.60 0" rotation="8 3 0" scale="1 1 .5">
+  <a-entity position="-3.2 -2.60 0" rotation="8 3 0" scale="2 2 1">
     <a-plane id="mainBoardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreMain; side:double; transparent:true"></a-plane>
@@ -1269,7 +1269,7 @@ AFRAME.registerComponent('ui-autobg', {
   </a-entity>
 
   <!-- Écran droit -->
-  <a-entity position=" 2.2 -2.60 0" rotation="8 -3 0" scale="1 1 .5">
+  <a-entity position=" 3.2 -2.60 0" rotation="8 -3 0" scale="2 2 1">
     <a-plane id="scoreboardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreCanvas; side:double; transparent:true"></a-plane>
