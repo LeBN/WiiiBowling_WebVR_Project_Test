@@ -1206,16 +1206,17 @@ AFRAME.registerComponent('ui-autobg', {
     <a-assets>
       <!-- sons placeholders -->
       <audio id="sndThrow"  src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
-      <audio id="sndPin"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
-      <audio id="sndStrike" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
-      <audio id="sndEnd"    src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABJbXANCg=="></audio>
+      <audio id="sndPin"    src="Assets\Sounds\Bowling\Sample_0013.wav"></audio>
+      <audio id="sndStrike" src="Assets\Sounds\Voices\CrowdSlowClap.wav"></audio>
+      <audio id="sndEnd"    src="Assets\Sounds\Bowling\Sample_0031.wav"></audio>
       <canvas id="scoreCanvas" width="1024" height="512"></canvas>
       <canvas id="scoreMain" width="2048" height="1024"></canvas>
 
       <a-asset-item id="pinGLB" src="Bowling pins.glb"></a-asset-item> <!-- quilles, modèle pas fonctionnel pour le moment -->
     </a-assets>
 
-    <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body="" scale="1.5 1.5 1.5"></a-entity>
+    <!-- Pistes de bowling -->
+    <a-entity gltf-model="Assets/3dModels/BowlingField.glb" rotation="0 -90 0" shadow="receive: true; cast: false" static-body="" scale="2 2 2"></a-entity>
 
     <!-- Lumières -->
     <a-entity light="type:ambient; intensity:0.35; color:#ffffff"></a-entity>
