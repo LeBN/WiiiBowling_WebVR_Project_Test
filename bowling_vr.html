@@ -836,10 +836,10 @@ AFRAME.registerComponent('ray-grab', {
 
         // Rack (pose-boules)
         const rack = document.createElement('a-box');
-        rack.setAttribute('position', `0 0.25 1.2`);
-        rack.setAttribute('width', 1.6);
+        rack.setAttribute('position', `1 .25 .6`);
+        rack.setAttribute('width', 0.6);
         rack.setAttribute('height', 0.5);
-        rack.setAttribute('depth', 0.6);
+        rack.setAttribute('depth', 1.6);
         rack.setAttribute('material', 'visible:false');
         rack.setAttribute('color', '#4b5563');
         rack.setAttribute('static-body','');
@@ -880,29 +880,38 @@ AFRAME.registerComponent('ray-grab', {
           [{x:-dx*1.5, z:dz*3},     {x:-dx*0.5,z:dz*3},{x:+dx*0.5,z:dz*3},{x:+dx*1.5,z:dz*3}]
         ];
         rows.flat().forEach((o)=>{
-          const pin = document.createElement('a-cylinder');
+          const pin = document.createElement('a-entity');
           const pModel = document.createElement('a-entity');
-          pin.setAttribute('dynamic-body','mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
-          pin.setAttribute('class','pin grab-target');
+          
+          // Géométrie + physique sur le parent (invisible)
+          pin.setAttribute('geometry', 'primitive: cylinder; radius: 0.06; height: 0.45');
+          pin.setAttribute('material', 'transparent: true; opacity: 0');  // collider invisible
+          pin.setAttribute('dynamic-body', 'mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
+
+          // Compat: on conserve un attribut radius pour le code qui lit ent.getAttribute('radius')
           pin.setAttribute('radius', 0.06);
-          pin.setAttribute('height', 0.45);
-          pin.setAttribute('color', '#f5f5f4');
-          pin.setAttribute('material','roughness:0.5; metalness:0.05; color:#f5f5f4');
+
+          pin.setAttribute('class','pin grab-target');
           pin.setAttribute('position', `${base.x+o.x} ${base.y} ${base.z+o.z}`);
+
           pin.addEventListener('collide', (e)=>{
             const other = e.detail && e.detail.body && e.detail.body.el;
             if (!other) return;
             const v = other.body ? (other.body.velocity.length()||0) : 0;
-            if (v>0.8){
+            if (v > 0.8){
               const wp = pin.object3D.getWorldPosition(new THREE.Vector3());
               playAt(this.el.sceneEl,'sndPin',wp);
             }
           });
+
+          // Enfant visuel : le modèle glTF uniquement (affiché)
           pModel.setAttribute('gltf-model', `Assets/3dModels/Pin.glb`);
-          pModel.setAttribute('position', '0 -.19 0');
+          pModel.setAttribute('position', '0 -.19 0');               // ajuste si besoin
           pModel.setAttribute('shadow','cast:true; receive:true');
+
           pin.appendChild(pModel);
           this.el.sceneEl.appendChild(pin);
+
           pin.dataset.pinIndex = String(this._pins.length + 1);
           this._pins.push(pin);
         });
@@ -914,7 +923,7 @@ AFRAME.registerComponent('ray-grab', {
         b.setAttribute('class','ball grab-target');
         b.setAttribute('radius', spec.radius);
         // b.setAttribute('color', spec.color);
-        b.setAttribute('material', 'src: url(Assets/Textures/bwg_Ball_${spec.color}.png); color: ${spec.color}; roughness:0.35; metalness:0.1'
+        b.setAttribute('material', `src: url(Assets/Textures/bwg_Ball_${spec.color}.png); roughness:0.35; metalness:0.1`
                                   /*'shader: overlay-double;' +
                                   'baseColor: #999;' +
                                   'overlay1: #img1;' +
@@ -925,7 +934,7 @@ AFRAME.registerComponent('ray-grab', {
                                   'overlay2Scale: 1 1;' +
                                   'transparent: true'*/
         );
-        b.setAttribute('position','0 0.4 1.0'); // sur le rack
+        b.setAttribute('position','1 .4 .5'); // sur le rack
         b.setAttribute('shadow','cast:true; receive:true');
         b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
         this.el.sceneEl.appendChild(b);
@@ -1191,7 +1200,7 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:true"
+    physics="gravity:-9.8;debug:false"
     bowling-game="difficulty: normal"
   >
     <a-assets>
@@ -1252,7 +1261,7 @@ AFRAME.registerComponent('ui-autobg', {
     <a-box position=" 2.9 -0.45 -0.2" width="0.06" height="0.90" depth="0.06" color="#1c2430"></a-box>
 
     <!-- Écran gauche -->
-  <a-entity position="-3.2 -0.60 0" rotation="8 3 0" scale="2 2 1">
+  <a-entity position="-2.2 -2.60 0" rotation="8 3 0" scale="1 1 .5">
     <a-plane id="mainBoardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreMain; side:double; transparent:true"></a-plane>
@@ -1260,7 +1269,7 @@ AFRAME.registerComponent('ui-autobg', {
   </a-entity>
 
   <!-- Écran droit -->
-  <a-entity position=" 3.2 -0.60 0" rotation="8 -3 0" scale="2 2 1">
+  <a-entity position=" 2.2 -2.60 0" rotation="8 -3 0" scale="1 1 .5">
     <a-plane id="scoreboardPlane"
             width="3" height="1.5"
             material="shader:flat; src:#scoreCanvas; side:double; transparent:true"></a-plane>
@@ -1273,7 +1282,7 @@ AFRAME.registerComponent('ui-autobg', {
 
 
         <!-- Panneau de réglages VR -->
-        <a-entity id="vrMenu" position="-3.75 1.35 -1.05" rotation="0 35 0" scale="2 2 1"
+        <a-entity id="vrMenu" position="-2.75 1.05 -1.05" rotation="0 35 0" scale="1 1 .5"
                     ui-autobg="target:#vrMenuContent; padding:0.8 0.4; opacity:0.92; z:-0.01; offsetX:-0.45; offsetY:0.1">
 
           <a-entity id="vrMenuContent">
