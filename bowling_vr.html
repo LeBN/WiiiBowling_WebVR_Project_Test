@@ -794,11 +794,14 @@ AFRAME.registerComponent('ray-grab', {
           document.createElement('a-box'), // avant-gauche
           document.createElement('a-box'), // gauche
           document.createElement('a-box'), // droite
-          document.createElement('a-box')  // dessous
+          document.createElement('a-box'), // dessous
+          document.createElement('a-box'), // dessus
+          document.createElement('a-box'), // sol
+          document.createElement('a-box')  // face
         ]
-        bounds[0].setAttribute('position', `0 2 5`);
+        bounds[0].setAttribute('position', `0 5 5`);
         bounds[0].setAttribute('width', 40);
-        bounds[0].setAttribute('height', 5);
+        bounds[0].setAttribute('height', 10);
         bounds[0].setAttribute('depth', .85);
         bounds[1].setAttribute('position', `11 -.5 -19`);
         bounds[1].setAttribute('width', 19);
@@ -808,26 +811,131 @@ AFRAME.registerComponent('ray-grab', {
         bounds[2].setAttribute('width', 19);
         bounds[2].setAttribute('height', 1);
         bounds[2].setAttribute('depth', 38);
-        bounds[3].setAttribute('position', `20 2 2.5`);
+        bounds[3].setAttribute('position', `19 5 -15.5`);
         bounds[3].setAttribute('rotation', '0 90 0');
-        bounds[3].setAttribute('width', 5);
-        bounds[3].setAttribute('height', 5);
+        bounds[3].setAttribute('width', 50);
+        bounds[3].setAttribute('height', 10);
         bounds[3].setAttribute('depth', 1);
-        bounds[4].setAttribute('position', `-20 2 2.5`);
+        bounds[4].setAttribute('position', `-19 5 -15.5`);
         bounds[4].setAttribute('rotation', '0 90 0');
-        bounds[4].setAttribute('width', 5);
-        bounds[4].setAttribute('height', 5);
+        bounds[4].setAttribute('width', 50);
+        bounds[4].setAttribute('height', 10);
         bounds[4].setAttribute('depth', 1);
-        bounds[5].setAttribute('position', `0 -.9 -22.5`);
+        bounds[5].setAttribute('position', `0 -.6 -19.5`);
         bounds[5].setAttribute('rotation', '90 0 0');
         bounds[5].setAttribute('width', 40);
-        bounds[5].setAttribute('height', 40);
+        bounds[5].setAttribute('height', 50);
         bounds[5].setAttribute('depth', 1);
+        bounds[6].setAttribute('position', `0 9.2 -11.5`);
+        bounds[6].setAttribute('rotation', '88 0 0');
+        bounds[6].setAttribute('width', 40);
+        bounds[6].setAttribute('height', 50);
+        bounds[6].setAttribute('depth', 1);
+        bounds[7].setAttribute('position', `0 -.5 2.5`);
+        bounds[7].setAttribute('rotation', '90 0 0');
+        bounds[7].setAttribute('width', 40);
+        bounds[7].setAttribute('height', 5);
+        bounds[7].setAttribute('depth', 1);
+        bounds[8].setAttribute('position', `0 4.5 -36.8`);
+        bounds[8].setAttribute('rotation', '-10 0 0');
+        bounds[8].setAttribute('width', 40);
+        bounds[8].setAttribute('height', 7);
+        bounds[8].setAttribute('depth', 1);
         bounds.forEach(b=>{
           b.setAttribute('material', 'visible: false');
           b.setAttribute('static-body','');
           scene.appendChild(b);
         });
+        this._lane_1 = document.createElement('a-box');
+        this._lane_1.setAttribute('position', `-16.7 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_1.setAttribute('width', this.data.laneWidth);
+        this._lane_1.setAttribute('height', 0.04);
+        this._lane_1.setAttribute('depth', this.data.laneLength);
+        this._lane_1.setAttribute('material', 'visible:false');
+        this._lane_1.setAttribute('static-body','');
+        this._lane_1.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_1);
+        this._lane_2 = document.createElement('a-box');
+        this._lane_2.setAttribute('position', `-13.45 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_2.setAttribute('width', this.data.laneWidth);
+        this._lane_2.setAttribute('height', 0.04);
+        this._lane_2.setAttribute('depth', this.data.laneLength);
+        this._lane_2.setAttribute('material', 'visible:false');
+        this._lane_2.setAttribute('static-body','');
+        this._lane_2.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_2);
+        this._lane_3 = document.createElement('a-box');
+        this._lane_3.setAttribute('position', `-9.95 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_3.setAttribute('width', this.data.laneWidth);
+        this._lane_3.setAttribute('height', 0.04);
+        this._lane_3.setAttribute('depth', this.data.laneLength);
+        this._lane_3.setAttribute('material', 'visible:false');
+        this._lane_3.setAttribute('static-body','');
+        this._lane_3.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_3);
+        this._lane_4 = document.createElement('a-box');
+        this._lane_4.setAttribute('position', `-6.75 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_4.setAttribute('width', this.data.laneWidth);
+        this._lane_4.setAttribute('height', 0.04);
+        this._lane_4.setAttribute('depth', this.data.laneLength);
+        this._lane_4.setAttribute('material', 'visible:false');
+        this._lane_4.setAttribute('static-body','');
+        this._lane_4.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_4);
+        this._lane_5 = document.createElement('a-box');
+        this._lane_5.setAttribute('position', `-3.23 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_5.setAttribute('width', this.data.laneWidth);
+        this._lane_5.setAttribute('height', 0.04);
+        this._lane_5.setAttribute('depth', this.data.laneLength);
+        this._lane_5.setAttribute('material', 'visible:false');
+        this._lane_5.setAttribute('static-body','');
+        this._lane_5.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_5);
+        this._lane_6 = document.createElement('a-box');
+        this._lane_6.setAttribute('position', `3.5 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_6.setAttribute('width', this.data.laneWidth);
+        this._lane_6.setAttribute('height', 0.04);
+        this._lane_6.setAttribute('depth', this.data.laneLength);
+        this._lane_6.setAttribute('material', 'visible:false');
+        this._lane_6.setAttribute('static-body','');
+        this._lane_6.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_6);
+        this._lane_7 = document.createElement('a-box');
+        this._lane_7.setAttribute('position', `6.75 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_7.setAttribute('width', this.data.laneWidth);
+        this._lane_7.setAttribute('height', 0.04);
+        this._lane_7.setAttribute('depth', this.data.laneLength);
+        this._lane_7.setAttribute('material', 'visible:false');
+        this._lane_7.setAttribute('static-body','');
+        this._lane_7.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_7);
+        this._lane_8 = document.createElement('a-box');
+        this._lane_8.setAttribute('position', `10.25 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_8.setAttribute('width', this.data.laneWidth);
+        this._lane_8.setAttribute('height', 0.04);
+        this._lane_8.setAttribute('depth', this.data.laneLength);
+        this._lane_8.setAttribute('material', 'visible:false');
+        this._lane_8.setAttribute('static-body','');
+        this._lane_8.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_8);
+        this._lane_9 = document.createElement('a-box');
+        this._lane_9.setAttribute('position', `13.45 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_9.setAttribute('width', this.data.laneWidth);
+        this._lane_9.setAttribute('height', 0.04);
+        this._lane_9.setAttribute('depth', this.data.laneLength);
+        this._lane_9.setAttribute('material', 'visible:false');
+        this._lane_9.setAttribute('static-body','');
+        this._lane_9.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_9);
+        this._lane_10 = document.createElement('a-box');
+        this._lane_10.setAttribute('position', `16.95 -0.02 ${-this.data.laneLength/2}`);
+        this._lane_10.setAttribute('width', this.data.laneWidth);
+        this._lane_10.setAttribute('height', 0.04);
+        this._lane_10.setAttribute('depth', this.data.laneLength);
+        this._lane_10.setAttribute('material', 'visible:false');
+        this._lane_10.setAttribute('static-body','');
+        this._lane_10.setAttribute('shadow','receive:true; cast:false');
+        scene.appendChild(this._lane_10);
 
         // Piste
         this._lane = document.createElement('a-box');
@@ -855,15 +963,25 @@ AFRAME.registerComponent('ray-grab', {
 
         // Rack (pose-boules)
         const rack = document.createElement('a-box');
-        rack.setAttribute('position', `1 .25 .6`);
-        rack.setAttribute('width', 0.6);
-        rack.setAttribute('height', 0.5);
-        rack.setAttribute('depth', 1.6);
+        rack.setAttribute('position', `1.753 .27 2.45`);
+        rack.setAttribute('width', 0.44);
+        rack.setAttribute('height', 0.55);
+        rack.setAttribute('depth', 2.5);
         rack.setAttribute('material', 'visible:false');
         rack.setAttribute('color', '#4b5563');
         rack.setAttribute('static-body','');
         rack.setAttribute('shadow','receive:true');
         scene.appendChild(rack);
+        const rack2 = document.createElement('a-box');
+        rack2.setAttribute('position', `1.753 .55 .68`);
+        rack2.setAttribute('width', 0.68);
+        rack2.setAttribute('height', 1.1);
+        rack2.setAttribute('depth', 1);
+        rack2.setAttribute('material', 'visible:false');
+        rack2.setAttribute('color', '#4b5563');
+        rack2.setAttribute('static-body','');
+        rack2.setAttribute('shadow','receive:true');
+        scene.appendChild(rack2);
 
         // Ligne de faute
         const foul = document.createElement('a-box');
@@ -890,7 +1008,7 @@ AFRAME.registerComponent('ray-grab', {
       // -------- Pins & Boule --------
       spawnPins(){
         this._pins.forEach(p=>p.remove()); this._pins.length=0;
-        const base = new THREE.Vector3(0, 0.225, this.data.pinZ);
+        const base = new THREE.Vector3(0, 0.38, this.data.pinZ);
         const dx = 0.6, dz = -0.525; // espacements
         const rows = [
           [{x:0,        z:0}],
@@ -954,7 +1072,7 @@ AFRAME.registerComponent('ray-grab', {
                                   'overlay2Scale: 1 1;' +
                                   'transparent: true'*/
         );
-        b.setAttribute('position','1 .4 .5'); // sur le rack
+        b.setAttribute('position','1.753 1 1.5'); // sur le rack
         b.setAttribute('shadow','cast:true; receive:true');
         b.setAttribute('dynamic-body',`mass:${spec.mass}; shape:sphere; linearDamping:${this._ballDamp.lin}; angularDamping:${this._ballDamp.ang}`);
         this.el.sceneEl.appendChild(b);
@@ -1220,7 +1338,7 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:false"
+    physics="gravity:-9.8;debug:true"
     bowling-game="difficulty: normal"
   >
     <a-assets>
@@ -1245,7 +1363,7 @@ AFRAME.registerComponent('ui-autobg', {
 
     <!-- RIG + Caméra  -->
     <a-entity id="rig" position="0 1.6 2.8">
-      <a-entity id="cam" camera look-controls wasd-controls="acceleration:20" movement-controls></a-entity>
+      <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
 
 
 
