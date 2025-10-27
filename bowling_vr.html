@@ -175,9 +175,9 @@ AFRAME.registerComponent('ray-grab', {
       hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 1.8, wobble: 0.08 }
     };
     const BALLS = [
-      {name:'Légère',  radius:0.15, mass:3.0,  color:'blue'}, // #479aa5
-      {name:'Standard',radius:0.22, mass:5.0,  color:'green'}, // #32CD32
-      {name:'Lourde',  radius:0.28, mass:7.25, color:'pink'} // #f79ac5
+      {name:'Légère',  radius:0.15, mass:6.0,  color:'blue'}, // #479aa5
+      {name:'Standard',radius:0.22, mass:10.0,  color:'green'}, // #32CD32
+      {name:'Lourde',  radius:0.28, mass:14.5, color:'pink'} // #f79ac5
     ];
 
     AFRAME.registerComponent('bowling-game', {
@@ -1061,7 +1061,7 @@ AFRAME.registerComponent('ray-grab', {
         b.setAttribute('class','ball grab-target');
         b.setAttribute('radius', spec.radius);
         // b.setAttribute('color', spec.color);
-        b.setAttribute('material', `src: url(Assets/Textures/bwg_Ball_${spec.color}.png); roughness:0.35; metalness:0.1`
+        b.setAttribute('material', `src: url(Assets/Textures/bwg_Ball_${spec.color}.png); roughness:0.25; metalness:0.1`
                                   /*'shader: overlay-double;' +
                                   'baseColor: #999;' +
                                   'overlay1: #img1;' +
@@ -1363,7 +1363,7 @@ AFRAME.registerComponent('ui-autobg', {
 
     <!-- RIG + Caméra  -->
     <a-entity id="rig" position="0 1.6 2.8">
-      <a-entity id="cam" camera look-controls wasd-controls="acceleration:20"></a-entity>
+      <a-entity id="cam" camera look-controls movement-controls></a-entity>
 
 
 
