@@ -175,9 +175,9 @@ AFRAME.registerComponent('ray-grab', {
       hard:   { ballDampLin: 0.03, ballDampAng: 0.35, gutterHalf: 1.8, wobble: 0.08 }
     };
     const BALLS = [
-      {name:'Légère',  radius:0.15, mass:9.0,  color:'blue'}, // #479aa5
-      {name:'Standard',radius:0.22, mass:15.0,  color:'green'}, // #32CD32
-      {name:'Lourde',  radius:0.28, mass:21.75, color:'pink'} // #f79ac5
+      {name:'Légère',  radius:0.17, mass:9.0,  color:'blue'}, // #479aa5
+      {name:'Standard',radius:0.20, mass:15.0,  color:'green'}, // #32CD32
+      {name:'Lourde',  radius:0.25, mass:21.75, color:'pink'} // #f79ac5
     ];
 
     AFRAME.registerComponent('bowling-game', {
@@ -1338,7 +1338,7 @@ AFRAME.registerComponent('ui-autobg', {
     background="color:#0f141a"
     renderer="colorManagement:true;physicallyCorrectLights:true;antialias:true;sortTransparentObjects:true"
     shadow="type:pcfsoft"
-    physics="gravity:-9.8;debug:true"
+    physics="gravity:-9.8;debug:false"
     bowling-game="difficulty: normal"
   >
     <a-assets>
