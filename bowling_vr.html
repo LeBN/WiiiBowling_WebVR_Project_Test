@@ -170,9 +170,9 @@ AFRAME.registerComponent('ray-grab', {
 
     // ---------- Jeu ----------
     const DIFFS = {
-      easy:   { ballDampLin: 0.14, ballDampAng: 0.35, gutterHalf: 1, wobble: 0.00 },
-      normal: { ballDampLin: 0.08, ballDampAng: 0.20, gutterHalf: 1.5, wobble: 0.03 },
-      hard:   { ballDampLin: 0.03, ballDampAng: 0.08, gutterHalf: 1.8, wobble: 0.08 }
+      easy:   { ballDampLin: 0.14, ballDampAng: 0.01, gutterHalf: 1, wobble: 0.00 },
+      normal: { ballDampLin: 0.08, ballDampAng: 0.10, gutterHalf: 1.5, wobble: 0.03 },
+      hard:   { ballDampLin: 0.03, ballDampAng: 0.35, gutterHalf: 1.8, wobble: 0.08 }
     };
     const BALLS = [
       {name:'Légère',  radius:0.15, mass:9.0,  color:'blue'}, // #479aa5
@@ -1023,7 +1023,7 @@ AFRAME.registerComponent('ray-grab', {
           // Géométrie + physique sur le parent (invisible)
           pin.setAttribute('geometry', 'primitive: cylinder; radius: 0.13; height: 0.75');
           pin.setAttribute('material', 'transparent: true; opacity: 0');
-          pin.setAttribute('dynamic-body', 'mass:1.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
+          pin.setAttribute('dynamic-body', 'mass: 4.5; shape:cylinder; linearDamping:0.01; angularDamping:0.01');
 
           // Compat: on conserve un attribut radius pour le code qui lit ent.getAttribute('radius')
           pin.setAttribute('radius', 0.12);
